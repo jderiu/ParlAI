@@ -22,7 +22,7 @@ This is specified in the following way:
 """
 
 
-from parlai.core.teachers import FbDialogTeacher
+from parlai.core.teachers import FbDialogTeacher, create_task_agent_from_taskname
 from .build import build
 
 import copy
@@ -99,3 +99,15 @@ class BothRevisedTeacher(FbDialogTeacher):
 
 class DefaultTeacher(SelfOriginalTeacher):
     pass
+
+
+class SelfchatTeacher(SelfOriginalTeacher):
+    # Dummy class to add arguments for interactive world.
+    pass
+
+def create_agents(opt):
+    if not opt.get('interactive_task', False):
+        return create_task_agent_from_taskname(opt)
+    else:
+        # interactive task has no task agents (they are attached as user agents)
+        return []

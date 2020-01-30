@@ -443,10 +443,10 @@ class MultiAgentDialogWorld(World):
         Return if the episode is done for any subagent.
         """
         done = False
-        for a in self.agents:
-            if a.episode_done():
-                done = True
-        return done
+        # for a in self.agents:
+        #     if a.episode_done():
+        #         done = True
+        return True in [a.epoch_done() for a in self.agents]
 
     def report(self):
         """
@@ -1262,8 +1262,9 @@ def _create_task_agents(opt: Opt):
         # Tries to call the create_agent function in agents.py
         task_agents = my_module.create_agents(opt)  # type: ignore
 
-    except AttributeError:
+    except AttributeError as e:
         # Create_agent not found, so try to create the teacher directly.
+        print(e)
         return create_task_agent_from_taskname(opt)
     if type(task_agents) != list:
         task_agents = [task_agents]
