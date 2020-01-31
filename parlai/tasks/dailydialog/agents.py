@@ -21,8 +21,9 @@ once acting as Speaker 2.
 
 import os
 import json
-from parlai.core.teachers import FixedDialogTeacher
+from parlai.core.teachers import FixedDialogTeacher, FbDialogTeacher
 from .build import build
+import copy
 
 
 START_ENTRY = {'text': '__SILENCE__', 'emotion': 'no_emotion', 'act': 'no_act'}
@@ -123,6 +124,25 @@ class NoStartTeacher(Convai2Teacher):
             'episode_done': episode_done,
         }
         return action
+
+
+def _path(opt, persona):
+    # Build the data if it doesn't exist.
+    build(opt)
+    dt = opt['datatype'].split(':')[0] + '_' + persona
+    return os.path.join(opt['datapath'], 'Dailydialog', 'dailydialog', dt + '.txt')
+
+
+class SelfOriginalTeacher(FixedDialogTeacher):
+    def __init__(self, opt, shared=None):
+        opt = copy.deepcopy(opt)
+        opt['datafile'] = _path(opt, 'self_original')
+        super().__init__(opt, shared)
+
+
+class SelfchatTeacher(SelfOriginalTeacher):
+    # Dummy class to add arguments for interactive world.
+    pass
 
 
 class DefaultTeacher(Convai2Teacher):

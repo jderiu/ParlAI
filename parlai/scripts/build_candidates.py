@@ -63,7 +63,7 @@ def build_cands(opt):
         if world.epoch_done():
             print('EPOCH DONE')
             break
-    fw = open(outfile, 'w')
+    fw = open(outfile, 'w', encoding='utf-8')
     fw.write('\n'.join(cands))
     fw.close()
 
