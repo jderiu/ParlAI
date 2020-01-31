@@ -1203,7 +1203,7 @@ class FbDialogTeacher(DialogTeacher):
             new_episode = False (this is the second example in the episode)
         """
         print("[loading fbdialog data:" + path + "]")
-        with open(path) as read:
+        with open(path, 'rt', encoding='utf-8') as read:
             start = True
             x = ''
             reward = 0
