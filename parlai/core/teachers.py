@@ -1148,7 +1148,7 @@ class FbDialogTeacher(DialogTeacher):
         lines_have_ids = False
         cands_are_replies = False
         cnt = 0
-        with open(path) as read:
+        with open(path, 'rt', encoding='utf-8') as read:
             for line in read:
                 line = line.strip().replace('\\n', '\n')
                 if len(line) > 0:

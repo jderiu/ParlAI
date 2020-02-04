@@ -21,7 +21,7 @@ once acting as Speaker 2.
 
 import os
 import json
-from parlai.core.teachers import FixedDialogTeacher, FbDialogTeacher
+from parlai.core.teachers import FixedDialogTeacher, create_task_agent_from_taskname
 from .build import build
 import copy
 
@@ -140,10 +140,20 @@ class SelfOriginalTeacher(FixedDialogTeacher):
         super().__init__(opt, shared)
 
 
+class SelfTeacher(SelfOriginalTeacher):
+    pass
+
+
 class SelfchatTeacher(SelfOriginalTeacher):
     # Dummy class to add arguments for interactive world.
     pass
 
-
 class DefaultTeacher(Convai2Teacher):
     pass
+
+def create_agents(opt):
+    if not opt.get('interactive_task', False):
+        return create_task_agent_from_taskname(opt)
+    else:
+        # interactive task has no task agents (they are attached as user agents)
+        return []

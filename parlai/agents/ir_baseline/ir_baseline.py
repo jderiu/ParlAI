@@ -267,7 +267,7 @@ class IrBaselineAgent(Agent):
         self.episodeDone = True
         if opt.get('label_candidates_file'):
             f = open(opt.get('label_candidates_file'))
-            self.label_candidates = f.read().split('\n')
+            self.label_candidates = f.read().lower().split('\n')
 
     def reset(self):
         """
@@ -312,11 +312,14 @@ class IrBaselineAgent(Agent):
             hist_sz = self.opt.get('history_size', 1)
             left_idx = max(0, len(self.history) - hist_sz)
             text = ' '.join(self.history[left_idx : len(self.history)])
+            if text in self.label_candidates:
+                cands.remove(text)
             rep = self.build_query_representation(text)
             reply['text_candidates'] = rank_candidates(
                 rep, cands, self.length_penalty, self.dictionary
             )
             reply['text'] = reply['text_candidates'][0]
+            self.label_candidates.remove(reply['text'])
         else:
             reply['text'] = "I don't know."
         return reply

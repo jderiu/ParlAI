@@ -56,6 +56,7 @@ class SelfChatBaseWorld(DialogPartnerWorld):
         self.turn_cnt = 0
         self.episode_cnt = 0
         self._openers = None
+        self.random_order = self.opt.get('random_order', True)
 
     def init_contexts(self) -> None:
         """
@@ -125,10 +126,13 @@ class SelfChatBaseWorld(DialogPartnerWorld):
         if self.turn_cnt == 0:
             self.acts = [None, None]
             # choose speaking order:
-            if random.choice([0, 1]):
-                self.agents_ordered = [self.agents[0], self.agents[1]]
+            if self.random_order:
+                if random.choice([0, 1]):
+                    self.agents_ordered = [self.agents[0], self.agents[1]]
+                else:
+                    self.agents_ordered = [self.agents[1], self.agents[0]]
             else:
-                self.agents_ordered = [self.agents[1], self.agents[0]]
+                self.agents_ordered = [self.agents[0], self.agents[1]]
             # get the beginning of the conversation, which can include contexts
             # and/or any number of starting messages
             self.contexts = self.get_contexts(self.episode_cnt)

@@ -32,7 +32,8 @@ class DefaultTeacher(DialogTeacher):
         """
         reply = super().act()
         if reply.get('text', '').startswith('You have the following friends'):
-            reply['id'] = 'Teacher'
+            reply.force_set('id', 'Teacher')
+            #reply['id'] = 'Teacher'
         return reply
 
     def setup_data(self, path):
