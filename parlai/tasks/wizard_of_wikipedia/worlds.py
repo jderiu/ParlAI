@@ -22,6 +22,8 @@ from projects.wizard_of_wikipedia.knowledge_retriever.knowledge_retriever import
     KnowledgeRetrieverAgent,
 )
 
+from typing import List
+
 
 NO_TOPIC = '[NO TOPIC]'
 
@@ -229,7 +231,7 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
         datatype = self.opt['datatype'].split(':')[0]
         self.topic_list = json.load(open(topics_path, 'rb'))[datatype]
 
-    def get_contexts(self):
+    def get_contexts(self, episode_num: int) -> List[str]:
         random.seed()
         topic = random.choice(self.topic_list)
         return [topic, topic]
