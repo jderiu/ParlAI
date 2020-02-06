@@ -21,6 +21,7 @@ def setup_args(parser=None):
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('-d', '--display-examples', type='bool', default=True)
     parser.add_argument('-n', '-ne', '--num-examples', type=int, default=10)
+    parser.add_argument('-nd', '--num-dialogues', type=int, default=10)
     parser.add_argument('-ltim', '--log-every-n-secs', type=float, default=2)
     parser.add_argument(
         '--display-ignore-fields',
@@ -87,18 +88,27 @@ def self_chat(opt, print_parser=None):
     logger = WorldLogger(opt)
 
     # Run some self chats.
-    max_cnt = opt['num_examples']
-    cnt = 0
-    while cnt < max_cnt:
-        cnt += opt.get('batchsize', 1)
-        world.parley()
-        logger.log(world)
+    max_dial_cnt = opt['num_dialogues']
+    dial_cnt = 0
+    while dial_cnt < max_dial_cnt:
+        print('Dialogue Number: {}\n'.format(dial_cnt))
+        max_turn_cnt = opt['num_examples']
+        turn_cnt = 0
+        while True:
+            turn_cnt += opt.get('batchsize', 1)
+            world.parley()
+            logger.log(world)
 
-        if opt.get('display_examples'):
-            print(world.display())
-        if log_time.time() > log_every_n_secs:
-            text = log_time.log(cnt, max_cnt)
-            print(text)
+            if opt.get('display_examples'):
+                print(world.display())
+            if log_time.time() > log_every_n_secs:
+                text = log_time.log(turn_cnt, max_turn_cnt)
+                print(text)
+            if world.episode_done():
+                break
+
+        print('\n\n')
+        dial_cnt += 1
 
     if opt.get('display_examples'):
         print('-- end of episode --')

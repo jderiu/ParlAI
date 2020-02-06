@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
-from parlai.core.teachers import FixedDialogTeacher
+from parlai.core.teachers import FixedDialogTeacher, create_task_agent_from_taskname
 from . import tm_utils
 import json
 
@@ -296,3 +296,10 @@ class SelfDialogueSegmentTeacher(FixedDialogTeacher):
 
 class DefaultTeacher(SelfDialogueTeacher):
     pass
+
+def create_agents(opt):
+    if not opt.get('interactive_task', False):
+        return create_task_agent_from_taskname(opt)
+    else:
+        # interactive task has no task agents (they are attached as user agents)
+        return []

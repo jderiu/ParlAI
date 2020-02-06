@@ -337,7 +337,7 @@ class StarspaceAgent(Agent):
         return obs
 
     def same(self, y1, y2):
-        if len(y1.squeeze(0)) != len(y2.squeeze(0)):
+        if y1.shape[1] != y2.shape[1]:
             return False
         if abs((y1.squeeze(0) - y2.squeeze(0)).sum().data.sum()) > 0.00001:
             return False

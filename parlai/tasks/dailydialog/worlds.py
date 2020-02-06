@@ -38,9 +38,9 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
         super(InteractiveSelfchatWorld, self).__init__(opt, agents, shared)
 
     def init_contexts(self):
-        self.contexts = load_contexts(self.opt)
+        self.context_list = load_contexts(self.opt)
 
     def get_contexts(self, episode_num: int) -> List[str]:
         random.seed()
-        context = random.choice(self.contexts)
+        context = random.choice(self.context_list)
         return [context[0], context[1]]
