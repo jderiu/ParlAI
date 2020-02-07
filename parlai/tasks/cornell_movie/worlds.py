@@ -8,15 +8,16 @@ from typing import List
 def load_contexts(opt):
     print('[ loading personas.. ]')
     # Create ConvAI2 data so we can assign personas.
-    dailydialog_opt = opt.copy()
-    dailydialog_opt['task'] = 'cornell_movie'
-    if dailydialog_opt['datatype'].startswith('train'):
-        dailydialog_opt['datatype'] = 'train:eval'
-    dailydialog_opt['max-display-len'] = 1000
-    dailydialog_opt['display-ignore-fields'] = "agent_reply"
-    dailydialog_opt['interactive_task'] = False
-    convai2_agent = RepeatLabelAgent(dailydialog_opt)
-    convai2_world = create_task(dailydialog_opt, convai2_agent)
+    cornell_opt = opt.copy()
+    cornell_opt['task'] = 'cornell_movie'
+    if cornell_opt['datatype'].startswith('train'):
+        cornell_opt['datatype'] = 'train:eval'
+
+    cornell_opt['max-display-len'] = 1000
+    cornell_opt['display-ignore-fields'] = "agent_reply"
+    cornell_opt['interactive_task'] = False
+    convai2_agent = RepeatLabelAgent(cornell_opt)
+    convai2_world = create_task(cornell_opt, convai2_agent)
     contexts = list()
     while not convai2_world.epoch_done():
         convai2_world.parley()
@@ -27,7 +28,8 @@ def load_contexts(opt):
             msg = convai2_world.get_acts()[0]
             if msg['text'] == '__SILENCE__':
                 continue
-            contexts.append((msg['text'], msg['labels'][0]))
+            if msg.get('labels', None):
+                contexts.append((msg['text'], msg['labels'][0]))
     print('[ loaded ' + str(len(contexts)) + ' personas ]')
     return list(contexts)
 

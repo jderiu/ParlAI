@@ -21,9 +21,9 @@ RESOURCES = [
 
 def create_fb_format(lines_file, convo_file, outpath):
     print('[building fbformat]')
-    with open(os.path.join(outpath, 'train.txt'), 'w') as ftrain, open(
-        os.path.join(outpath, 'valid.txt'), 'w'
-    ) as fvalid, open(os.path.join(outpath, 'test.txt'), 'w') as ftest:
+    with open(os.path.join(outpath, 'train.txt'), 'wt', encoding='utf-8') as ftrain, open(
+        os.path.join(outpath, 'valid.txt'), 'w' , encoding='utf-8'
+    ) as fvalid, open(os.path.join(outpath, 'test.txt'), 'wt', encoding='utf-8') as ftest:
         lines = {}
 
         codecs.register_error('strict', codecs.ignore_errors)
