@@ -30,6 +30,8 @@ def load_contexts(opt):
                 continue
             if msg.get('labels', None):
                 contexts.append((msg['text'], msg['labels'][0]))
+            else:
+                contexts.append((msg['text'], msg['text']))
     print('[ loaded ' + str(len(contexts)) + ' personas ]')
     return list(contexts)
 
