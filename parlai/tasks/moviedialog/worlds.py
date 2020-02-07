@@ -9,7 +9,7 @@ def load_contexts(opt):
     print('[ loading personas.. ]')
     # Create ConvAI2 data so we can assign personas.
     dailydialog_opt = opt.copy()
-    dailydialog_opt['task'] = 'dailydialog'
+    dailydialog_opt['task'] = 'moviedialog'
     if dailydialog_opt['datatype'].startswith('train'):
         dailydialog_opt['datatype'] = 'train:eval'
     dailydialog_opt['max-display-len'] = 1000
