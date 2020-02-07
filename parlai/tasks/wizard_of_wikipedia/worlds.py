@@ -229,7 +229,7 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
         )
         # Get training set topics
         datatype = self.opt['datatype'].split(':')[0]
-        self.topic_list = json.load(open(topics_path, 'rb'))[datatype]
+        self.topic_list = json.load(open(topics_path, 'rt', encoding='utf-8'))[datatype]
 
     def get_contexts(self, episode_num: int) -> List[str]:
         random.seed()
