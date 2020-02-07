@@ -4,7 +4,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from parlai.core.teachers import FbDialogTeacher
+from parlai.core.teachers import FbDialogTeacher, create_task_agent_from_taskname
 from .build import build
 
 import copy
@@ -76,3 +76,21 @@ class DoubleTeacher(DefaultTeacher):
             for i, e in enumerate(self._rebuild(alternate)):
                 if self._is_valid(e):
                     yield e, i == 0
+
+
+class SelfOriginalTeacher(FbDialogTeacher):
+    def __init__(self, opt, shared=None):
+        opt = copy.deepcopy(opt)
+        opt['datafile'] = _path(opt, 'self_original')
+        super().__init__(opt, shared)
+
+class SelfchatTeacher(SelfOriginalTeacher):
+    # Dummy class to add arguments for interactive world.
+    pass
+
+def create_agents(opt):
+    if not opt.get('interactive_task', False):
+        return create_task_agent_from_taskname(opt)
+    else:
+        # interactive task has no task agents (they are attached as user agents)
+        return []
