@@ -1,5 +1,5 @@
 ##!/usr/bin/env bash
-
+export PYTHONPATH=. 
 datasets=("dailydialog" "personachat" "wizard_of_wikipedia" "moviedialog")
 
 for dataset in "${datasets[@]}"
