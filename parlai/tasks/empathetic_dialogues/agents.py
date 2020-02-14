@@ -75,7 +75,7 @@ class EmpatheticDialoguesTeacher(FixedDialogTeacher):
             ftpath = self.opt['fasttextloc']
             ftmodel = fastText.FastText.load_model(ftpath)
 
-        df = open(self.datapath).readlines()
+        df = open(self.datapath, 'rt', encoding='utf-8').readlines()
 
         turn_idx = 1
         responder_text_dialogue = []
