@@ -12,8 +12,10 @@ from parlai.core.worlds import create_task
 from parlai.utils.world_logging import WorldLogger
 from parlai.utils.misc import TimeLogger
 
-import random
+from pymongo import MongoClient
 
+import random
+DATABASE_NAME = 'auto_judge'
 
 def setup_args(parser=None):
     if parser is None:
@@ -23,6 +25,10 @@ def setup_args(parser=None):
     parser.add_argument('-n', '-ne', '--num-examples', type=int, default=10)
     parser.add_argument('-nd', '--num-dialogues', type=int, default=10)
     parser.add_argument('-ltim', '--log-every-n-secs', type=float, default=2)
+    parser.add_argument('-host', '--mongo-host', type=str)
+    parser.add_argument('-port', '--mongo-port', type=int)
+    parser.add_argument('-user', '--user-name', type=str)
+    parser.add_argument('-pw', '--password', type=str)
     parser.add_argument(
         '--display-ignore-fields',
         type=str,
@@ -57,6 +63,18 @@ def setup_args(parser=None):
 
 
 def self_chat(opt, print_parser=None):
+    client = MongoClient(
+        opt['mongo_host'],
+        opt['mongo_port'],
+        username=opt['user_name'],
+        password=opt['password'],
+        #authSource=DATABASE_NAME
+    )
+
+    db = client[DATABASE_NAME]
+
+    collection = db['sampled-dialogues']
+
     if print_parser is not None:
         if print_parser is True and isinstance(opt, ParlaiParser):
             print_parser = opt
@@ -114,6 +132,21 @@ def self_chat(opt, print_parser=None):
         print('-- end of episode --')
 
     logger.write(opt['outfile'], opt['format'])
+    for convo in logger._logs:
+        convo_data = {}
+        convo_data['system_name'] = opt['model_file']
+        convo_data['domain_name'] = opt['task'].split(':')[0]
+        turn_list = []
+
+        for eid, exchange in enumerate(convo):
+            turn0 = exchange[0]
+            turn1 = exchange[1]
+            turn0['exchange_nr'] = eid
+            turn1['exchange_nr'] = eid
+            turn_list.append(turn0)
+            turn_list.append(turn1)
+        convo_data['convo'] = turn_list
+        collection.insert_one(convo_data)
 
 
 if __name__ == '__main__':
