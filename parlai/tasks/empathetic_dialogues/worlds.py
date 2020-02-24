@@ -8,15 +8,15 @@ from typing import List
 def load_contexts(opt):
     print('[ loading personas.. ]')
     # Create ConvAI2 data so we can assign personas.
-    dailydialog_opt = opt.copy()
-    dailydialog_opt['task'] = 'dailydialog'
-    if dailydialog_opt['datatype'].startswith('train'):
-        dailydialog_opt['datatype'] = 'train:eval'
-    dailydialog_opt['max-display-len'] = 1000
-    dailydialog_opt['display-ignore-fields'] = "agent_reply"
-    dailydialog_opt['interactive_task'] = False
-    convai2_agent = RepeatLabelAgent(dailydialog_opt)
-    convai2_world = create_task(dailydialog_opt, convai2_agent)
+    empathetic_dialogues_opt = opt.copy()
+    empathetic_dialogues_opt['task'] = 'empathetic_dialogues'
+    if empathetic_dialogues_opt['datatype'].startswith('train'):
+        empathetic_dialogues_opt['datatype'] = 'train:eval'
+    empathetic_dialogues_opt['max-display-len'] = 1000
+    empathetic_dialogues_opt['display-ignore-fields'] = "agent_reply"
+    empathetic_dialogues_opt['interactive_task'] = False
+    convai2_agent = RepeatLabelAgent(empathetic_dialogues_opt)
+    convai2_world = create_task(empathetic_dialogues_opt, convai2_agent)
     contexts = list()
     while not convai2_world.epoch_done():
         convai2_world.parley()
