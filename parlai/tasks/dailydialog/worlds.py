@@ -43,4 +43,4 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
     def get_contexts(self, episode_num: int) -> List[str]:
         random.seed()
         context = random.choice(self.context_list)
-        return [context[0], context[1]]
+        return [context[1], context[0]]
