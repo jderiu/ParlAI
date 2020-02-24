@@ -493,7 +493,7 @@ class TorchRankerAgent(TorchAgent):
             preds = []
             for i in range(batchsize):
                 preds.append(random.choice(cand_preds[i][0 : self.opt['topk']]))
-
+        self.fixed_candidates = [cand for cand in self.fixed_candidates if not cand == preds[0]]
         return Output(preds, cand_preds)
 
     def block_repeats(self, cand_preds):
