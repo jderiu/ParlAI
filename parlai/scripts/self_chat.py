@@ -156,6 +156,8 @@ def self_chat(opt, print_parser=None):
             turn1 = exchange[1]
             turn0['exchange_nr'] = eid
             turn1['exchange_nr'] = eid
+            turn0.force_set('id', 'bot')
+            turn1.force_set('id', 'bot')
             turn_list.append(turn0)
             turn_list.append(turn1)
 
