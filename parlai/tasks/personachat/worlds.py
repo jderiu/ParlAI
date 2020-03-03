@@ -143,6 +143,7 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
 
     def sample_episode_length(self):
         sampled_val = random.choices(self.lengths, weights=self.p_vals, k=1)[0] + 1
+        sampled_val = max([sampled_val, 4])
         return sampled_val
 
     def get_contexts(self, episode_num: int) -> List[str]:

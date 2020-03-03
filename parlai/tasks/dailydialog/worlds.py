@@ -51,7 +51,10 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
         self.lengths = np.arange(bin_lengths.shape[0])
 
     def sample_episode_length(self):
-        sampled_val = random.choices(self.lengths, weights=self.p_vals, k=1)[0] + 1 #if length is 1 then only the context is rendered
+        # if length is 1 then only the context is rendered
+        sampled_val = random.choices(self.lengths, weights=self.p_vals, k=1)[0] + 1
+        #make sure there are at least 6 turns
+        sampled_val = max([sampled_val, 3])
         return sampled_val
 
     def get_contexts(self, episode_num: int) -> List[str]:
