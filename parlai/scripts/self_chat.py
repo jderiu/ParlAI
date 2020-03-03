@@ -122,10 +122,9 @@ def self_chat(opt, print_parser=None):
     dial_cnt = 0
     while dial_cnt < max_dial_cnt:
         world.max_turn_cnt = world.sample_episode_length()
+        world.turn_cnt = 0
         print('Dialogue Number: {}, Max Turn: {}\n'.format(dial_cnt, world.max_turn_cnt))
-        turn_cnt = 0
         while True:
-            turn_cnt += opt.get('batchsize', 1)
             world.parley()
             logger.log(world)
 
