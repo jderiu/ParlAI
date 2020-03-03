@@ -9,7 +9,7 @@ import json
 import random
 import os
 import string
-
+import numpy as np
 
 from parlai.core.agents import create_agent
 from parlai.core.message import Message
@@ -17,7 +17,8 @@ from parlai.core.worlds import DialogPartnerWorld, validate
 from parlai.tasks.wizard_of_wikipedia.agents import TOKEN_KNOWLEDGE, TOKEN_END_KNOWLEDGE
 from parlai.tasks.self_chat.worlds import InteractiveWorld as SelfChatBaseWorld
 from parlai.utils.misc import warn_once
-
+from parlai.agents.repeat_label.repeat_label import RepeatLabelAgent
+from parlai.core.worlds import create_task
 from projects.wizard_of_wikipedia.knowledge_retriever.knowledge_retriever import (
     KnowledgeRetrieverAgent,
 )
@@ -220,7 +221,45 @@ class InteractiveGeneratorWorld(InteractiveWorld):
         return act
 
 
+def compute_dialogue_lenghts(opt):
+    wizard_opt = opt.copy()
+    wizard_opt['task'] = 'wizard_of_wikipedia'
+    if wizard_opt['datatype'].startswith('train'):
+        wizard_opt['datatype'] = 'train:eval'
+    wizard_opt['max-display-len'] = 1000
+    wizard_opt['display-ignore-fields'] = "agent_reply"
+    wizard_opt['interactive_task'] = False
+    agent = RepeatLabelAgent(wizard_opt)
+    world = create_task(wizard_opt, agent)
+    contexts = list()
+    while not world.epoch_done():
+        turn_list = list()
+        while True:
+            world.parley()
+            msg = world.get_acts()[0]
+
+            turn_list.append(msg['text'])
+            turn_list.append(msg['labels'][0])
+
+            if world.episode_done() or world.acts[0].get('episode_done', True):
+                break
+
+        contexts.append(turn_list)
+
+    lengths = [int(len(convo) / 2) for convo in contexts]
+    bin_lengths = np.bincount(lengths)
+    p_vals = bin_lengths / np.sum(bin_lengths)
+    lengths = np.arange(bin_lengths.shape[0])
+    return lengths, p_vals
+
+
 class InteractiveSelfchatWorld(SelfChatBaseWorld):
+
+    def __init__(self, opt, agents, shared=None):
+        opt['random_order'] = False
+        self.lengths, self.p_vals = compute_dialogue_lenghts(opt)
+        super(InteractiveSelfchatWorld, self).__init__(opt, agents, shared)
+
     def init_contexts(self):
         print('[ loading topics.. ]')
         # Load possible chosen topics
@@ -230,6 +269,11 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
         # Get training set topics
         datatype = self.opt['datatype'].split(':')[0]
         self.topic_list = json.load(open(topics_path, 'rt', encoding='utf-8'))[datatype]
+
+    def sample_episode_length(self):
+
+        sampled_val = random.choices(self.lengths, weights=self.p_vals, k=1)[0] + 1
+        return sampled_val
 
     def get_contexts(self, episode_num: int) -> List[str]:
         random.seed()

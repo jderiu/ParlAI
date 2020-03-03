@@ -10,7 +10,18 @@ try:
     import botocore  # noqa: F401
     import joblib  # noqa: F401
     import websocket  # noqa: F401
-    import sh  # noqa: F401
+    try:
+        import sh
+    except ImportError:
+        # fallback: emulate the sh API with pbs
+        import pbs
+
+
+        class Sh(object):
+            def __getattr__(self, attr):
+                return pbs.Command(attr)
+        sh = Sh() # noqa: F401
+
 except ImportError:
     raise SystemExit(
         "Please install 3rd-party dependencies by running: "

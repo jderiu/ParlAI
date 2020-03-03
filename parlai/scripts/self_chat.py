@@ -17,6 +17,7 @@ from pymongo import MongoClient
 import random
 DATABASE_NAME = 'auto_judge'
 
+
 def setup_args(parser=None):
     if parser is None:
         parser = ParlaiParser(True, True, 'Self chat with a model')
@@ -60,6 +61,17 @@ def setup_args(parser=None):
     parser.set_defaults(interactive_mode=True, task='self_chat')
     WorldLogger.add_cmdline_args(parser)
     return parser
+
+
+def cap_context(turn_list, domain):
+    if domain == 'dailydialog':
+        return turn_list[2:]
+    elif domain == 'personachat':
+        return turn_list[2:]
+    elif domain == 'wizard_of_wikipedia':
+        return turn_list[2:]
+    elif domain == 'empathetic_dialogues':
+        return turn_list[2:]
 
 
 def self_chat(opt, print_parser=None):
@@ -109,6 +121,7 @@ def self_chat(opt, print_parser=None):
     max_dial_cnt = opt['num_dialogues']
     dial_cnt = 0
     while dial_cnt < max_dial_cnt:
+        world.max_turn_cnt = world.sample_episode_length()
         print('Dialogue Number: {}\n'.format(dial_cnt))
         max_turn_cnt = opt['num_examples']
         turn_cnt = 0
@@ -145,7 +158,8 @@ def self_chat(opt, print_parser=None):
             turn1['exchange_nr'] = eid
             turn_list.append(turn0)
             turn_list.append(turn1)
-        convo_data['convo'] = turn_list
+
+        convo_data['convo'] = cap_context(turn_list, convo_data['domain_name'])
         collection.insert_one(convo_data)
 
 
