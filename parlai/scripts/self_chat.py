@@ -159,9 +159,9 @@ def self_chat(opt, print_parser=None):
             turn_list.append(turn0)
             turn_list.append(turn1)
 
-        convo_data['convo'] = cap_context(turn_list, convo_data['domain_name'])
+        convo_data['convo'] = cap_context(convo_data, convo_data['domain_name'])
         collection.insert_one(convo_data)
-
+        print(len(convo_data['convo']))
 
 if __name__ == '__main__':
     parser = setup_args()
