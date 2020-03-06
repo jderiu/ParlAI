@@ -28,7 +28,7 @@ from tqdm import tqdm
 import random
 
 DATABASE_NAME = 'auto_judge'
-
+COLLECTION_NAME = 'sampled-dialogues-amt-test1'
 def setup_args(parser=None):
     if parser is None:
         parser = ParlaiParser(True, True, 'Display data from a task')
@@ -59,7 +59,7 @@ def display_data(opt):
 
     db = client[DATABASE_NAME]
 
-    collection = db['sampled-dialogues']
+    collection = db[COLLECTION_NAME]
 
     # create repeat label agent and assign it to the specified task
     agent = RepeatLabelAgent(opt)
@@ -109,7 +109,15 @@ def display_data(opt):
     for did, convo in enumerate(sampled_convos):
         convo_data = {}
         convo_data['domain_name'] = opt['task'].split(':')[0]
-        convo_data['system_name'] = "{}/human".format(convo_data['domain_name'])
+        convo_data['system_name0'] = "{}/human".format(convo_data['domain_name'])
+        convo_data['system_name1'] = "{}/human".format(convo_data['domain_name'])
+
+        convo_data['system_type0'] = 'human'
+        convo_data['system_type1'] = 'human'
+
+        convo_data['is_human0'] = True
+        convo_data['is_human1'] = True
+
         turn_list = []
 
         for eid, exchange in enumerate(convo):
