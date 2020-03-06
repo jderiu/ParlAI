@@ -16,6 +16,7 @@ from pymongo import MongoClient
 
 import random
 DATABASE_NAME = 'auto_judge'
+COLLECTION_NAME = 'sampled-dialogues-amt-test1'
 
 
 def setup_args(parser=None):
@@ -85,7 +86,7 @@ def self_chat(opt, print_parser=None):
 
     db = client[DATABASE_NAME]
 
-    collection = db['sampled-dialogues']
+    collection = db[COLLECTION_NAME]
 
     if print_parser is not None:
         if print_parser is True and isinstance(opt, ParlaiParser):
@@ -142,7 +143,15 @@ def self_chat(opt, print_parser=None):
     logger.write(opt['outfile'], opt['format'])
     for convo in logger._logs:
         convo_data = {}
-        convo_data['system_name'] = opt['model_file']
+        convo_data['system_name0'] = opt['model_file']
+        convo_data['system_name1'] = opt['model_file']
+
+        convo_data['system_type0'] = opt['model_file'].split('/')[2]
+        convo_data['system_type1'] = opt['model_file'].split('/')[2]
+
+        convo_data['is_human0'] = False
+        convo_data['is_human1'] = False
+
         convo_data['domain_name'] = opt['task'].split(':')[0]
         turn_list = []
 
