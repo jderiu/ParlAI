@@ -20,6 +20,6 @@ overworld: MessengerOverworld
 max_workers: 30
 opt:
   debug: True
-  password: ParlAI
+  password: 
 additional_args:
   page_id: 1 # Configure Your Own Page
