@@ -18,7 +18,7 @@ from parlai.chat_service.core.chat_service_manager import ChatServiceManager
 
 import parlai.chat_service.core.shared_utils as shared_utils
 from parlai.chat_service.services.websocket.sockets import MessageSocketHandler
-from agents import WebsocketAgent
+from parlai.chat_service.services.websocket.agents import WebsocketAgent
 import tornado
 from tornado.options import options
 
