@@ -26,6 +26,7 @@ def setup_args():
     parser = ParlaiParser(False, False)
     parser.add_parlai_data_path()
     parser.add_chatservice_args()
+    parser.set_defaults(interactive_mode=True)
     parser_grp = parser.add_argument_group('Terminal Chat')
     parser_grp.add_argument(
         '--port', default=35496, type=int, help='Port to run the terminal chat server'
