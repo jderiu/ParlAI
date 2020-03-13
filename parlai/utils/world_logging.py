@@ -130,7 +130,7 @@ class WorldLogger:
 
     def write_parlai_format(self, outfile):
         print('[ Saving log to {} in ParlAI format ]'.format(outfile))
-        with open(outfile, 'w') as fw:
+        with open(outfile, 'wt', encoding='utf-8') as fw:
             for episode in tqdm(self._logs):
                 ep = self.convert_to_labeled_data(episode)
                 for act in ep:

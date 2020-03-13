@@ -16,6 +16,8 @@ from pymongo import MongoClient
 
 import random
 DATABASE_NAME = 'auto_judge'
+COLLECTION_NAME = 'sampled-dialogues-amt-test1'
+
 
 def setup_args(parser=None):
     if parser is None:
@@ -62,6 +64,17 @@ def setup_args(parser=None):
     return parser
 
 
+def cap_context(turn_list, domain):
+    if domain == 'dailydialog':
+        return turn_list[2:]
+    elif domain == 'personachat':
+        return turn_list[2:]
+    elif domain == 'wizard_of_wikipedia':
+        return turn_list[2:]
+    elif domain == 'empathetic_dialogues':
+        return turn_list[2:]
+
+
 def self_chat(opt, print_parser=None):
     client = MongoClient(
         opt['mongo_host'],
@@ -73,7 +86,7 @@ def self_chat(opt, print_parser=None):
 
     db = client[DATABASE_NAME]
 
-    collection = db['sampled-dialogues']
+    collection = db[COLLECTION_NAME]
 
     if print_parser is not None:
         if print_parser is True and isinstance(opt, ParlaiParser):
@@ -109,19 +122,15 @@ def self_chat(opt, print_parser=None):
     max_dial_cnt = opt['num_dialogues']
     dial_cnt = 0
     while dial_cnt < max_dial_cnt:
-        print('Dialogue Number: {}\n'.format(dial_cnt))
-        max_turn_cnt = opt['num_examples']
-        turn_cnt = 0
+        world.max_turn_cnt = world.sample_episode_length()
+        world.turn_cnt = 0
+        print('Dialogue Number: {}, Max Turn: {}\n'.format(dial_cnt, world.max_turn_cnt))
         while True:
-            turn_cnt += opt.get('batchsize', 1)
             world.parley()
             logger.log(world)
 
             if opt.get('display_examples'):
                 print(world.display())
-            if log_time.time() > log_every_n_secs:
-                text = log_time.log(turn_cnt, max_turn_cnt)
-                print(text)
             if world.episode_done():
                 break
 
@@ -134,7 +143,15 @@ def self_chat(opt, print_parser=None):
     logger.write(opt['outfile'], opt['format'])
     for convo in logger._logs:
         convo_data = {}
-        convo_data['system_name'] = opt['model_file']
+        convo_data['system_name0'] = opt['model_file']
+        convo_data['system_name1'] = opt['model_file']
+
+        convo_data['system_type0'] = opt['model_file'].split('/')[2]
+        convo_data['system_type1'] = opt['model_file'].split('/')[2]
+
+        convo_data['is_human0'] = False
+        convo_data['is_human1'] = False
+
         convo_data['domain_name'] = opt['task'].split(':')[0]
         turn_list = []
 
@@ -145,9 +162,10 @@ def self_chat(opt, print_parser=None):
             turn1['exchange_nr'] = eid
             turn_list.append(turn0)
             turn_list.append(turn1)
-        convo_data['convo'] = turn_list
-        collection.insert_one(convo_data)
 
+        convo_data['convo'] = cap_context(turn_list, convo_data['domain_name'])
+        collection.insert_one(convo_data)
+        print(len(convo_data['convo']))
 
 if __name__ == '__main__':
     parser = setup_args()

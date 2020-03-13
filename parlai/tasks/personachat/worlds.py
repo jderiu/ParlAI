@@ -13,7 +13,7 @@ from parlai.tasks.self_chat.worlds import SelfChatBaseWorld
 
 import random
 from typing import List
-
+import numpy as np
 
 def load_personas(opt):
     print('[ loading personas.. ]')
@@ -24,29 +24,43 @@ def load_personas(opt):
         convai2_opt['datatype'] = 'train:evalmode'
     convai2_opt['interactive_task'] = False
     convai2_agent = RepeatLabelAgent(convai2_opt)
-    convai2_world = create_task(convai2_opt, convai2_agent)
+    world = create_task(convai2_opt, convai2_agent)
     personas = set()
-    while not convai2_world.epoch_done():
-        convai2_world.parley()
-        msg = convai2_world.get_acts()[0]
-        # Find a new episode
-        if msg.get('episode_done', False) and not convai2_world.epoch_done():
-            convai2_world.parley()
-            msg = convai2_world.get_acts()[0]
-            txt = msg.get('text', '').split('\n')
-            a1_persona = ""
-            a2_persona = ""
-            for t in txt:
-                if t.startswith("partner's persona:"):
-                    a1_persona += (
-                        t.replace("partner's persona:", 'your persona:') + '\n'
-                    )
-                if t.startswith('your persona:'):
-                    a2_persona += t + '\n'
-            personas.add(a1_persona)
-            personas.add(a2_persona)
+    convos = list()
+    while not world.epoch_done():
+        turn_list = list()
+        while True:
+            world.parley()
+            msg = world.get_acts()[0]
+            text = msg.get('text', '')
+
+            if text.startswith('your persona:'):
+                txt = msg.get('text', '').split('\n')
+                a1_persona = ""
+                a2_persona = ""
+                for t in txt:
+                    if t.startswith("partner's persona:"):
+                        a1_persona += (
+                            t.replace("partner's persona:", 'your persona:') + '\n'
+                        )
+                    if t.startswith('your persona:'):
+                        a2_persona += t + '\n'
+                personas.add(a1_persona)
+                personas.add(a2_persona)
+                turn_list.append(a1_persona)
+                turn_list.append(a2_persona)
+                turn_list.append(txt[-1])
+                turn_list.append(msg['eval_labels'][0])
+            else:
+                turn_list.append(text)
+                turn_list.append(msg['eval_labels'][0])
+
+            if world.episode_done() or world.acts[0].get('episode_done', True):
+                break
+        convos.append(turn_list)
+
     print('[ loaded ' + str(len(personas)) + ' personas ]')
-    return list(personas)
+    return list(personas), convos
 
 
 class InteractiveWorld(DialogPartnerWorld):
@@ -62,15 +76,19 @@ class InteractiveWorld(DialogPartnerWorld):
 
     def __init__(self, opt, agents, shared=None):
         super().__init__(opt, agents, shared)
-        self.personas_list = load_personas(self.opt)
+        self.personas_list, convos = load_personas(self.opt)
         self.display_partner_persona = self.opt['display_partner_persona']
         self.cnt = 0
+
+
 
     def get_new_personas(self):
         random.seed()
         personas_1 = random.choice(self.personas_list)
         personas_2 = random.choice(self.personas_list)
         return personas_1, personas_2
+
+
 
     def parley(self):
         """
@@ -117,7 +135,16 @@ class InteractiveWorld(DialogPartnerWorld):
 
 class InteractiveSelfchatWorld(SelfChatBaseWorld):
     def init_contexts(self):
-        self.personas_list = load_personas(self.opt)
+        self.personas_list, convos = load_personas(self.opt)
+        lengths = [int(len(convo)/2) for convo in convos]
+        bin_lengths = np.bincount(lengths)
+        self.p_vals = bin_lengths / np.sum(bin_lengths)
+        self.lengths = np.arange(bin_lengths.shape[0])
+
+    def sample_episode_length(self):
+        sampled_val = random.choices(self.lengths, weights=self.p_vals, k=1)[0] + 1
+        sampled_val = max([sampled_val, 4])
+        return sampled_val
 
     def get_contexts(self, episode_num: int) -> List[str]:
         random.seed()
