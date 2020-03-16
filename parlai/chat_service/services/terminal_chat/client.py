@@ -39,6 +39,21 @@ def on_message(ws, message):
     print("\033[0m\nBot: " + incoming_message['text'], "\033[44m\n")
 
 
+class CustomOnMessage:
+
+    def __init__(self, json_path):
+        self.json_path = json_path
+
+    def __call__(self, ws, message):
+        incoming_message = json.loads(message)
+        with open(json_path, 'a') as fout:
+            to_dump = incoming_message.copy()
+            to_dump['speaker'] = 'bot'
+            fout.write(json.dumps(to_dump))
+            fout.write('\n')
+        print("\033[0m\nBot: " + incoming_message['text'], "\033[44m\n")
+
+
 def on_error(ws, error):
     """
     Prints an error, if occurs.
@@ -60,7 +75,7 @@ def on_close(ws):
     print("Connection closed")
 
 
-def _run(ws, id):
+def _run(ws, id, json_path):
     """
     Takes user input and sends it to a websocket.
 
@@ -73,6 +88,10 @@ def _run(ws, id):
         data['id'] = id
         data['text'] = x
         json_data = json.dumps(data)
+        with open(json_path, 'a') as fout:
+            data['speaker'] = 'human'
+            fout.write(json.dumps(data))
+            fout.write("\n")
         ws.send(json_data)
         time.sleep(1)
         if x == "[DONE]":
@@ -90,6 +109,16 @@ def on_open(ws):
     threading.Thread(target=_run, args=(ws, id)).start()
 
 
+class CustomOnOpen:
+
+    def __init__(self, json_path):
+        self.json_path = json_path
+
+    def __call__(self, ws):
+        id = _get_rand_id()
+        threading.Thread(target=_run, args=(ws, id, self.json_path)).start()
+
+
 def setup_args():
     """
     Set up args, specifically for the port number.
@@ -102,6 +131,7 @@ def setup_args():
         '--port', default=35496, type=int, help='Port to run the terminal chat server'
     )
     parser_grp.add_argument("--host", default="localhost", type=str, help="Host to run the terminal chat server")
+    parser_grp.add_argument("--jsonl", default="conv.jsonl", type=str, help="Where to store conversation")
     return parser.parse_args()
 
 
@@ -109,12 +139,15 @@ if __name__ == "__main__":
     opt = setup_args()
     port = opt.get('port', 34596)
     host = opt.get('host', 'localhost')
+    json_path = opt.get('jsonl', 'conv.jsonl')
     print("Connecting to port: ", port)
     ws = websocket.WebSocketApp(
         "ws://{}:{}/websocket".format(host, port),
-        on_message=on_message,
+        # on_message=on_message,
+        on_message=CustomOnMessage(json_path=json_path),
         on_error=on_error,
         on_close=on_close,
     )
-    ws.on_open = on_open
+    # ws.on_open = on_open
+    ws.on_open = CustomOnOpen(json_path=json_path)
     ws.run_forever()
