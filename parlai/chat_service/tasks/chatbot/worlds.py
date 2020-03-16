@@ -74,7 +74,7 @@ class MessengerBotChatTaskWorld(World):
                 print("===response====")
                 print(response)
                 print("~~~~~~~~~~~")
-                response['id'] = ''
+                # response['id'] = ''
                 self.agent.observe(response)
 
     def episode_done(self):
