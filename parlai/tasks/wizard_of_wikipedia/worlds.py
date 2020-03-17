@@ -63,6 +63,10 @@ class InteractiveWorld(DialogPartnerWorld):
 
         self.print_checked_sentence = opt['print_checked_sentence']
 
+    @staticmethod
+    def generate_world(opt, agents):
+        return InteractiveWorld(opt, agents)
+
     def _set_up_knowledge_agent(self, add_token_knowledge=False):
         from parlai.core.params import ParlaiParser
 
@@ -231,33 +235,38 @@ def compute_dialogue_lenghts(opt):
     wizard_opt['interactive_task'] = False
     agent = RepeatLabelAgent(wizard_opt)
     world = create_task(wizard_opt, agent)
+    convos = list()
     contexts = list()
     while not world.epoch_done():
         turn_list = list()
         while True:
             world.parley()
             msg = world.get_acts()[0]
+            text = msg['text']
+            label = msg['labels'][0]
+            knwoledge = msg['knowledge']
 
-            turn_list.append(msg['text'])
-            turn_list.append(msg['labels'][0])
+            turn_list.append('\n'.join([knwoledge, text]))
+            turn_list.append('\n'.join([knwoledge, label]))
 
             if world.episode_done() or world.acts[0].get('episode_done', True):
                 break
+        contexts.append(turn_list[:2])
+        convos.append(turn_list)
 
-        contexts.append(turn_list)
-
-    lengths = [int(len(convo) / 2) for convo in contexts]
+    lengths = [int(len(convo) / 2) for convo in convos]
     bin_lengths = np.bincount(lengths)
     p_vals = bin_lengths / np.sum(bin_lengths)
     lengths = np.arange(bin_lengths.shape[0])
-    return lengths, p_vals
+    return lengths, p_vals, contexts
 
 
 class InteractiveSelfchatWorld(SelfChatBaseWorld):
 
     def __init__(self, opt, agents, shared=None):
         opt['random_order'] = False
-        self.lengths, self.p_vals = compute_dialogue_lenghts(opt)
+        self._set_up_knowledge_agent(opt.get('add_token_knowledge', False))
+        self.lengths, self.p_vals, self.seed_contexts = compute_dialogue_lenghts(opt)
         super(InteractiveSelfchatWorld, self).__init__(opt, agents, shared)
 
     def init_contexts(self):
@@ -277,5 +286,88 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
 
     def get_contexts(self, episode_num: int) -> List[str]:
         random.seed()
-        topic = random.choice(self.topic_list)
-        return [topic, topic]
+        context = random.choice(self.seed_contexts)
+        return context
+
+    def _add_knowledge_to_act(self, act):
+        self.knowledge_agent.observe(act, actor_id='apprentice')
+        knowledge_act = self.knowledge_agent.act()
+        act['knowledge'] = knowledge_act['text']
+        act['checked_sentence'] = knowledge_act['checked_sentence']
+        act['title'] = knowledge_act['title']
+        return act
+
+    def _set_up_knowledge_agent(self, add_token_knowledge=False):
+        from parlai.core.params import ParlaiParser
+
+        parser = ParlaiParser(False, False)
+        KnowledgeRetrieverAgent.add_cmdline_args(parser)
+        parser.set_params(
+            model='projects:wizard_of_wikipedia:knowledge_retriever',
+            add_token_knowledge=add_token_knowledge,
+        )
+        knowledge_opt = parser.parse_args([], print_args=False)
+        self.knowledge_agent = create_agent(knowledge_opt)
+
+    def parley(self):
+        if self.episode_done():
+            self.turn_cnt = 0
+            self.episode_cnt += 1
+            self.contexts = None
+            self.seed_utterances = None
+            agents = self.get_agents()
+            for a in agents:
+                a.reset()
+
+        if self.turn_cnt == 0:
+            self.acts = [None, None]
+            # choose speaking order:
+            self.agents_ordered = [self.agents[0], self.agents[1]]
+            # get the beginning of the conversation, which can include contexts
+            # and/or any number of starting messages
+            self.contexts = self.get_contexts(self.episode_cnt)
+            self.seed_utterances = self._get_seed_utt_acts(
+                self.episode_cnt, self.agents_ordered
+            )
+
+        if self.contexts:
+            assert len(self.contexts) == 2
+            # initial context
+            for i in range(0, 2):
+                context = {
+                    'text': self.contexts[i],
+                    'episode_done': False,
+                    'id': 'context',
+                }
+                self.acts[1 - i] = context
+                self.agents_ordered[i].observe(validate(context))
+            # clear contexts so they are only added once per episode
+            self.contexts = None
+        elif self.seed_utterances:
+            # pop the next two seed messages (there may be less or more than 2 total)
+            utts = self.seed_utterances[:2]
+            self.seed_utterances = self.seed_utterances[2:]
+            # process the turn
+            for i in [0, 1]:
+                # if we have a seed utterance, add it to the conversation
+                if len(utts) > i:
+                    self.acts[i] = utts[i]
+                    if hasattr(self.agents_ordered[i], 'self_observe'):
+                        self.agents_ordered[i].self_observe(self.acts[i])
+                else:
+                    self.acts[i] = self.agents_ordered[i].act()
+                self.agents_ordered[1 - i].observe(validate(self.acts[i]))
+        else:
+            # do regular loop
+            acts = self.acts
+            agents = self.agents_ordered
+
+            acts[0] = agents[0].act()
+            acts[0] = self._add_knowledge_to_act(acts[0])
+            agents[1].observe(validate(acts[0]))
+            acts[1] = agents[1].act()
+            acts[1] = self._add_knowledge_to_act(acts[1])
+            agents[0].observe(validate(acts[1]))
+
+        self.update_counters()
+        self.turn_cnt += 1

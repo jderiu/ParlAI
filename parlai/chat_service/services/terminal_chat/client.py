@@ -88,7 +88,7 @@ def _run(ws, id, json_path):
         data['id'] = id
         data['text'] = x
         json_data = json.dumps(data)
-        with open(json_path, 'a') as fout:
+        with open(json_path, 'at', encoding='utf-8') as fout:
             data['speaker'] = 'human'
             fout.write(json.dumps(data))
             fout.write("\n")

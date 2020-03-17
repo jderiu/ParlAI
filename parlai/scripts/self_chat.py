@@ -16,7 +16,7 @@ from pymongo import MongoClient
 
 import random
 DATABASE_NAME = 'auto_judge'
-COLLECTION_NAME = 'sampled-dialogues-amt-test1'
+COLLECTION_NAME = 'sampled-dialogues-amt-test1.1'
 
 
 def setup_args(parser=None):
