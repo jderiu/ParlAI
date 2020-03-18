@@ -13,12 +13,14 @@ import numpy as np
 
 from parlai.core.agents import create_agent
 from parlai.core.message import Message
-from parlai.core.worlds import DialogPartnerWorld, validate
+from parlai.core.worlds import DialogPartnerWorld, validate, World
+from parlai.chat_service.services.messenger.worlds import OnboardWorld
 from parlai.tasks.wizard_of_wikipedia.agents import TOKEN_KNOWLEDGE, TOKEN_END_KNOWLEDGE
 from parlai.tasks.self_chat.worlds import InteractiveWorld as SelfChatBaseWorld
 from parlai.utils.misc import warn_once
 from parlai.agents.repeat_label.repeat_label import RepeatLabelAgent
 from parlai.core.worlds import create_task
+from parlai.core.agents import create_agent_from_shared
 from projects.wizard_of_wikipedia.knowledge_retriever.knowledge_retriever import (
     KnowledgeRetrieverAgent,
 )
@@ -27,6 +29,70 @@ from typing import List
 
 
 NO_TOPIC = '[NO TOPIC]'
+
+# ---------- Chatbot demo ---------- #
+class MessengerBotChatOnboardWorld(OnboardWorld):
+    """
+    Example messenger onboarding world for Chatbot Model.
+    """
+
+    @staticmethod
+    def generate_world(opt, agents):
+        return MessengerBotChatOnboardWorld(opt=opt, agent=agents[0])
+
+    def parley(self):
+        self.episodeDone = True
+
+# ---------- Overworld -------- #
+class MessengerOverworld(World):
+    """
+    World to handle moving agents to their proper places.
+    """
+
+    def __init__(self, opt, agent):
+        self.agent = agent
+        self.opt = opt
+        self.first_time = True
+        self.episodeDone = False
+
+    def return_overworld(self):
+        self.first_time = True
+
+    @staticmethod
+    def generate_world(opt, agents):
+        return MessengerOverworld(opt, agents[0])
+
+    @staticmethod
+    def assign_roles(agents):
+        for a in agents:
+            a.disp_id = 'Agent'
+
+    def episode_done(self):
+        return self.episodeDone
+
+    def parley(self):
+        if self.first_time:
+            self.agent.observe(
+                {
+                    'id': 'Overworld',
+                    'text': 'Welcome to the overworld for the ParlAI messenger '
+                    'chatbot demo. Please type "begin" to start.',
+                    'quick_replies': ['begin'],
+                }
+            )
+            self.first_time = False
+        a = self.agent.act()
+        if a is not None and a['text'].lower() == 'begin':
+            self.episodeDone = True
+            return 'default'
+        elif a is not None:
+            self.agent.observe(
+                {
+                    'id': 'Overworld',
+                    'text': 'Invalid option. Please type "begin".',
+                    'quick_replies': ['begin'],
+                }
+            )
 
 
 class InteractiveWorld(DialogPartnerWorld):
@@ -54,18 +120,22 @@ class InteractiveWorld(DialogPartnerWorld):
         print('[ loading topics.. ]')
         self.opt = opt
         self._load_topics(opt)
-        self.num_topics = opt['num_topics']
+        self.num_topics = opt.get('num_topics', 10)
         self.cnt = 0
         self.human_agent = self.agents[0]
         self.model_agent = self.agents[1]
 
         self._set_up_knowledge_agent(opt.get('add_token_knowledge', False))
 
-        self.print_checked_sentence = opt['print_checked_sentence']
+        self.print_checked_sentence = opt.get('print_checked_sentence', True)
 
     @staticmethod
     def generate_world(opt, agents):
-        return InteractiveWorld(opt, agents)
+        if opt['model'] is None and opt['model_file'] is None:
+            raise RuntimeError("Model must be specified")
+        return InteractiveWorld(
+            opt, [agents[0], create_agent_from_shared(opt['shared_bot_params'])]
+        )
 
     def _set_up_knowledge_agent(self, add_token_knowledge=False):
         from parlai.core.params import ParlaiParser
@@ -85,8 +155,8 @@ class InteractiveWorld(DialogPartnerWorld):
             opt['datapath'], 'wizard_of_wikipedia', 'topic_splits.json'
         )
         # Get training set topics
-        datatype = opt['datatype'].split(':')[0]
-        self.topic_list = json.load(open(topics_path, 'rb'))[datatype]
+        #datatype = opt['datatype'].split(':')[0]
+        self.topic_list = json.load(open(topics_path, 'rb'))['train']
 
     def _get_new_topic(self):
         random.seed()
@@ -244,10 +314,11 @@ def compute_dialogue_lenghts(opt):
             msg = world.get_acts()[0]
             text = msg['text']
             label = msg['labels'][0]
-            knwoledge = msg['knowledge']
+            chosen_topic = msg['chosen_topic']
+            knowledge = msg['knowledge']
 
-            turn_list.append('\n'.join([knwoledge, text]))
-            turn_list.append('\n'.join([knwoledge, label]))
+            turn_list.append('\n'.join([chosen_topic, text]))
+            turn_list.append('\n'.join([knowledge, label]))
 
             if world.episode_done() or world.acts[0].get('episode_done', True):
                 break
@@ -265,8 +336,9 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
 
     def __init__(self, opt, agents, shared=None):
         opt['random_order'] = False
-        self._set_up_knowledge_agent(opt.get('add_token_knowledge', False))
+        #self._set_up_knowledge_agent(opt.get('add_token_knowledge', False))
         self.lengths, self.p_vals, self.seed_contexts = compute_dialogue_lenghts(opt)
+        #self._set_up_knowledge_agent(opt.get('add_token_knowledge', False))
         super(InteractiveSelfchatWorld, self).__init__(opt, agents, shared)
 
     def init_contexts(self):
@@ -287,7 +359,7 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
     def get_contexts(self, episode_num: int) -> List[str]:
         random.seed()
         context = random.choice(self.seed_contexts)
-        return context
+        return [context[1], context[0]]
 
     def _add_knowledge_to_act(self, act):
         self.knowledge_agent.observe(act, actor_id='apprentice')
@@ -363,10 +435,10 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
             agents = self.agents_ordered
 
             acts[0] = agents[0].act()
-            acts[0] = self._add_knowledge_to_act(acts[0])
+            #acts[0] = self._add_knowledge_to_act(acts[0])
             agents[1].observe(validate(acts[0]))
             acts[1] = agents[1].act()
-            acts[1] = self._add_knowledge_to_act(acts[1])
+            #acts[1] = self._add_knowledge_to_act(acts[1])
             agents[0].observe(validate(acts[1]))
 
         self.update_counters()
