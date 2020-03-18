@@ -28,7 +28,7 @@ from tqdm import tqdm
 import random
 
 DATABASE_NAME = 'auto_judge'
-COLLECTION_NAME = 'sampled-dialogues-amt-test1'
+COLLECTION_NAME = 'sampled-dialogues-amt-test2'
 def setup_args(parser=None):
     if parser is None:
         parser = ParlaiParser(True, True, 'Display data from a task')
