@@ -95,7 +95,7 @@ def display_data(opt):
 
     domain =  opt['task'].split(':')[0]
     if domain == 'dailydialog':
-        convo_list = [convo[1:] for convo in logger._logs if not convo[0] == '__SILENCE__']
+        convo_list = [convo[1:] for convo in logger._logs if not convo[0] == '__SILENCE__' if len(convo) > 4]
     elif domain == 'wizard_of_wikipedia':
         convo_list = logger._logs
     elif domain == 'personachat':
