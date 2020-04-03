@@ -39,12 +39,18 @@ def load_personas(opt):
                 a1_persona = ""
                 a2_persona = ""
                 for t in txt:
-                    if t.startswith("partner's persona:"):
+                    if t.startswith("partner's persona:") and not t.startswith('your persona:'):
                         a1_persona += (
                             t.replace("partner's persona:", 'your persona:') + '\n'
                         )
-                    if t.startswith('your persona:'):
+
+                    if t.startswith('your persona:') and not t.startswith("partner's persona:"):
                         a2_persona += t + '\n'
+
+                    if not t.startswith('your persona:') and not t.startswith("partner's persona:") and a2_persona and a1_persona:
+                        a2_persona += t
+                        a1_persona += t
+
                 personas.add(a1_persona)
                 personas.add(a2_persona)
                 turn_list.append(a1_persona)
@@ -150,4 +156,5 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
         random.seed()
         personas_1 = random.choice(self.personas_list)
         personas_2 = random.choice(self.personas_list)
+        personas_2 = '\n'.join(personas_2.split('\n')[:-1])
         return [personas_1, personas_2]

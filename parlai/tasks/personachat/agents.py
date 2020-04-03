@@ -50,6 +50,19 @@ class SelfOriginalTeacher(FbDialogTeacher):
         super().__init__(opt, shared)
 
 
+class SelfOriginal20Teacher(FbDialogTeacher):
+    def __init__(self, opt, shared=None):
+        opt = copy.deepcopy(opt)
+        opt['datafile'] = _path(opt, 'self_original_20')
+        super().__init__(opt, shared)
+
+class SelfOriginal60Teacher(FbDialogTeacher):
+    def __init__(self, opt, shared=None):
+        opt = copy.deepcopy(opt)
+        opt['datafile'] = _path(opt, 'self_original_60')
+        super().__init__(opt, shared)
+
+
 class SelfTeacher(SelfOriginalTeacher):
     pass
 
