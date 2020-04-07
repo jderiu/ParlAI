@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 from parlai.agents.repeat_label.repeat_label import RepeatLabelAgent
 from parlai.core.agents import Agent
 from parlai.core.worlds import create_task, DialogPartnerWorld, validate
-
+from parlai.core.message import Message
 
 def load_openers(opt) -> Optional[List[str]]:
     base_task = opt['task'].split(':')[0]
@@ -172,8 +172,17 @@ class SelfChatBaseWorld(DialogPartnerWorld):
             acts = self.acts
             agents = self.agents_ordered
             acts[0] = agents[0].act()
+            if type(acts[0]) == Message:
+                acts[0].force_set('episode_done', self.episode_done())
+            else:
+                acts[0]['episode_done'] = self.episode_done()
             agents[1].observe(validate(acts[0]))
             acts[1] = agents[1].act()
+            if type(acts[1]) == Message:
+                acts[1].force_set('episode_done', self.episode_done())
+            else:
+                acts[1]['episode_done'] = self.episode_done()
+            #acts[1]['episode_done'] = self.episode_done()
             agents[0].observe(validate(acts[1]))
 
         self.update_counters()
