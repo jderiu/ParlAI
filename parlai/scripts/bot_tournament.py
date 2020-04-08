@@ -17,7 +17,7 @@ from pymongo import MongoClient
 
 import random
 DATABASE_NAME = 'auto_judge'
-COLLECTION_NAME = 'sampled-dialogues-autojudge-tournament-personachat'
+COLLECTION_NAME = 'sampled-dialogues-autojudge-tournament2-personachat'
 
 
 def setup_args(parser=None):
@@ -87,6 +87,61 @@ def cap_context(turn_list, domain):
     elif domain == 'empathetic_dialogues':
         return turn_list[2:]
 
+def store_logger(opt, collection, logger: WorldLogger):
+    for convo in logger._logs:
+        convo_data = {}
+
+        convo_data['is_human0'] = False
+        convo_data['is_human1'] = False
+
+        convo_data['domain_name'] = opt['task'].split(':')[0]
+        turn_list = []
+
+        convo_data['system_type0'] = opt['model_file1'].split('/')[2]
+        convo_data['system_type1'] = opt['model_file2'].split('/')[2]
+
+        for eid, exchange in enumerate(convo):
+            turn0 = exchange[0]
+            turn1 = exchange[1]
+            turn0['exchange_nr'] = eid
+            turn1['exchange_nr'] = eid
+            if type(turn0) == Message:
+                turn0.force_set('episode_done', bool(turn0['episode_done']))
+                turn0.force_set('id', convo_data['system_type0'])
+            else:
+                turn0['episode_done'] = bool(turn0['episode_done'])
+                turn0['id'] = convo_data['system_type0']
+
+
+            if type(turn1) == Message:
+                turn1.force_set('episode_done', bool(turn1['episode_done']))
+                turn1.force_set('id', convo_data['system_type1'])
+            else:
+                turn1['episode_done'] = bool(turn1['episode_done'])
+                turn1['id'] = convo_data['system_type1']
+
+            turn_list.append(turn0)
+            turn_list.append(turn1)
+
+        model1_starts = random.choice([False, True])
+
+        if not model1_starts:
+            convo_data['system_name1'] = opt['model_file1']
+            convo_data['system_name0'] = opt['model_file2']
+
+            convo_data['system_type1'] = opt['model_file1'].split('/')[2]
+            convo_data['system_type0'] = opt['model_file2'].split('/')[2]
+            convo_data['convo'] = cap_context(turn_list, convo_data['domain_name'])[1:]
+        else:
+            convo_data['system_name0'] = opt['model_file1']
+            convo_data['system_name1'] = opt['model_file2']
+
+            convo_data['system_type0'] = opt['model_file1'].split('/')[2]
+            convo_data['system_type1'] = opt['model_file2'].split('/')[2]
+            convo_data['convo'] = cap_context(turn_list, convo_data['domain_name'])
+
+        collection.insert_one(convo_data)
+
 
 def self_chat(opt, print_parser=None):
     client = MongoClient(
@@ -152,65 +207,10 @@ def self_chat(opt, print_parser=None):
 
         print('\n\n')
         dial_cnt += 1
-
-    if opt.get('display_examples'):
-        print('-- end of episode --')
-
-    logger.write(opt['outfile'], opt['format'])
-    for convo in logger._logs:
-        convo_data = {}
-
-        convo_data['is_human0'] = False
-        convo_data['is_human1'] = False
-
-        convo_data['domain_name'] = opt['task'].split(':')[0]
-        turn_list = []
-
-        convo_data['system_type0'] = opt['model_file1'].split('/')[2]
-        convo_data['system_type1'] = opt['model_file2'].split('/')[2]
-
-        for eid, exchange in enumerate(convo):
-            turn0 = exchange[0]
-            turn1 = exchange[1]
-            turn0['exchange_nr'] = eid
-            turn1['exchange_nr'] = eid
-            if type(turn0) == Message:
-                turn0.force_set('episode_done', bool(turn0['episode_done']))
-                turn0.force_set('id', convo_data['system_type0'])
-            else:
-                turn0['episode_done'] = bool(turn0['episode_done'])
-                turn0['id'] = convo_data['system_type0']
-
-
-            if type(turn1) == Message:
-                turn1.force_set('episode_done', bool(turn1['episode_done']))
-                turn1.force_set('id', convo_data['system_type1'])
-            else:
-                turn1['episode_done'] = bool(turn1['episode_done'])
-                turn1['id'] = convo_data['system_type1']
-
-            turn_list.append(turn0)
-            turn_list.append(turn1)
-
-        model1_starts = random.choice([False, True])
-
-        if not model1_starts:
-            convo_data['system_name1'] = opt['model_file1']
-            convo_data['system_name0'] = opt['model_file2']
-
-            convo_data['system_type1'] = opt['model_file1'].split('/')[2]
-            convo_data['system_type0'] = opt['model_file2'].split('/')[2]
-            convo_data['convo'] = cap_context(turn_list, convo_data['domain_name'])[1:]
-        else:
-            convo_data['system_name0'] = opt['model_file1']
-            convo_data['system_name1'] = opt['model_file2']
-
-            convo_data['system_type0'] = opt['model_file1'].split('/')[2]
-            convo_data['system_type1'] = opt['model_file2'].split('/')[2]
-            convo_data['convo'] = cap_context(turn_list, convo_data['domain_name'])
-
-        collection.insert_one(convo_data)
-        print(len(convo_data['convo']))
+        if dial_cnt % 20 == 0:
+            store_logger(opt, collection, logger)
+            logger = WorldLogger(opt)
+    store_logger(opt, collection, logger)
 
 if __name__ == '__main__':
     parser = setup_args()
