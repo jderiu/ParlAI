@@ -119,6 +119,11 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
     def init_contexts(self):
         self.personas_list = load_personas(self.opt)
 
+    def sample_episode_length(self):
+        sampled_val = random.choice([6,7, 8])
+        sampled_val = max([sampled_val, 4])
+        return sampled_val
+
     def get_contexts(self, episode_num: int) -> List[str]:
         random.seed()
         personas_1 = random.choice(self.personas_list)

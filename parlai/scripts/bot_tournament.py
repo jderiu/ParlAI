@@ -14,10 +14,10 @@ from parlai.utils.misc import TimeLogger
 from parlai.core.message import Message
 
 from pymongo import MongoClient
-
+from tqdm import tqdm
 import random
 DATABASE_NAME = 'auto_judge'
-COLLECTION_NAME = 'sampled-dialogues-autojudge-tournament-personachat'
+COLLECTION_NAME = 'sampled-dialogues-autojudge-tournament2-personachat'
 
 
 def setup_args(parser=None):
@@ -191,22 +191,20 @@ def self_chat(opt, print_parser=None):
 
     # Run some self chats.
     max_dial_cnt = opt['num_dialogues']
-    dial_cnt = 0
-    while dial_cnt < max_dial_cnt:
-        world.max_turn_cnt = world.sample_episode_length()
-        world.turn_cnt = 0
-        print('Dialogue Number: {}, Max Turn: {}\n'.format(dial_cnt, world.max_turn_cnt))
+    #dial_cnt = 0
+    world.max_turn_cnt = world.sample_episode_length()
+    for dial_cnt in tqdm(range(max_dial_cnt)):
+    #while dial_cnt < max_dial_cnt:
+        #world.max_turn_cnt = world.sample_episode_length()
+        #world.turn_cnt = 0
+        #print('Dialogue Number: {}, Max Turn: {}\n'.format(dial_cnt, world.max_turn_cnt))
         while True:
             world.parley()
             logger.log(world)
 
-            if opt.get('display_examples'):
-                print(world.display())
             if world.episode_done():
                 break
-
-        print('\n\n')
-        dial_cnt += 1
+        #dial_cnt += 1
         if dial_cnt % 20 == 0:
             store_logger(opt, collection, logger)
             logger = WorldLogger(opt)

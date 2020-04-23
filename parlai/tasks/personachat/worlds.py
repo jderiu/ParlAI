@@ -158,3 +158,16 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
         personas_2 = random.choice(self.personas_list)
         personas_2 = '\n'.join(personas_2.split('\n')[:-1])
         return [personas_1, personas_2]
+
+    def parley(self):
+        if self.episode_done():
+            self.turn_cnt = 0
+            self.max_turn_cnt = self.sample_episode_length()
+            self.episode_cnt += 1
+            self.contexts = None
+            self.seed_utterances = None
+            agents = self.get_agents()
+            for a in agents:
+                a.reset()
+
+        super().parley()
