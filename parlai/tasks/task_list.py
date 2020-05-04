@@ -64,6 +64,17 @@ task_list = [
         ),
     },
     {
+        "id": "BlendedSkillTalk",
+        "display_name": "Blended Skill Talk",
+        "task": "blended_skill_talk",
+        "tags": ["All", "ChitChat"],
+        "description": (
+            "A dataset of 7k conversations explicitly designed to exhibit multiple "
+            "conversation modes: displaying personality, having empathy, and "
+            "demonstrating knowledge."
+        ),
+    },
+    {
         "id": "BookTest",
         "display_name": "BookTest",
         "task": "booktest",
@@ -1074,6 +1085,49 @@ task_list = [
             "A dataset of (image, context, question, answer) tuples, comprised "
             "of eventful images taken from Bing, Flickr, and COCO. See "
             "https://arxiv.org/abs/1701.08251 for more information."
+        ),
+    },
+    {
+        "id": "ANLI",
+        "display_name": "Adversarial Natural Language Inference (ANLI) Corpus",
+        "task": "anli",
+        "tags": ["All", "Entailment", "NLI"],
+        "description": (
+            "The ANLI corpus (version 1.0) is a new large-scale NLI benchmark dataset,"
+            "collected via an iterative, adversarial human-and-model-in-the-loop procedure"
+            "with the labels entailment, contradiction, and neutral. A total of three rounds "
+            "of data are collected that progressively increase in difficulty and complexity."
+            "See https://github.com/facebookresearch/anli and https://arxiv.org/abs/1910.14599 "
+            "for more information."
+        ),
+    },
+    {
+        "id": "NLI",
+        "display_name": "Natural Language Inference (NLI) Corpus",
+        "task": "nli",
+        "tags": ["All", "Entailment"],
+        "description": (
+            "A collection of 3 popular Natural Language Inference(NLI) benchmark tasks: "
+            "ANLI v0.1, MultiNLI 1.0, SNLI 1.0."
+        ),
+    },
+    {
+        "id": "Funpedia",
+        "display_name": "Funpedia",
+        "task": "funpedia",
+        "tags": ["All"],
+        "description": (
+            "Task for rephrasing sentences from Wikipedia conditioned on a persona."
+        ),
+    },
+    {
+        "id": "LIGHTGenderBias",
+        "display_name": "LIGHT Gender Bias",
+        "task": "light_genderation_bias",
+        "tags": ["All"],
+        "description": (
+            "Task for debiasing the LIGHT dataset, all mitigation methods described here: "
+            "<https://arxiv.org/abs/1911.03842>."
         ),
     },
 ]

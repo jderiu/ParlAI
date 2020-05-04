@@ -10,9 +10,10 @@ Torch Classifier Agents classify text into a fixed set of labels.
 
 
 from parlai.core.opt import Opt
-from parlai.utils.distributed import is_distributed
+from parlai.utils.torch import PipelineHelper
 from parlai.core.torch_agent import TorchAgent, Output
 from parlai.utils.misc import round_sigfigs, warn_once
+from parlai.core.metrics import AverageMetric
 from collections import defaultdict
 
 import torch
@@ -92,6 +93,12 @@ class TorchClassifierAgent(TorchAgent):
             default=None,
             help='loads the list of classes from a file',
         )
+        parser.add_argument(
+            '--ignore-labels',
+            type='bool',
+            default=None,
+            help='Ignore labels provided to model',
+        )
 
     def __init__(self, opt: Opt, shared=None):
         init_model, self.is_finetune = self._get_init_model(opt, shared)
@@ -152,31 +159,30 @@ class TorchClassifierAgent(TorchAgent):
                 raise AttributeError(
                     'build_model() and build_criterion() need to return the model or criterion'
                 )
-            if self.use_cuda:
-                self.model.cuda()
-                self.criterion.cuda()
             if init_model:
                 print('Loading existing model parameters from ' + init_model)
                 self.load(init_model)
             if self.use_cuda:
-                if self.opt['data_parallel']:
-                    if is_distributed():
-                        raise ValueError(
-                            'Cannot combine --data-parallel and distributed mode'
-                        )
+                if self.model_parallel:
+                    self.model = PipelineHelper().make_parallel(self.model)
+                else:
+                    self.model.cuda()
+                if self.data_parallel:
                     self.model = torch.nn.DataParallel(self.model)
+                self.criterion.cuda()
+
         if shared:
             # We don't use get here because hasattr is used on optimizer later.
             if 'optimizer' in shared:
                 self.optimizer = shared['optimizer']
-        else:
+        elif self._should_initialize_optimizer():
             optim_params = [p for p in self.model.parameters() if p.requires_grad]
             self.init_optim(optim_params)
             self.build_lr_scheduler()
 
     def build_criterion(self):
         weight_tensor = torch.FloatTensor(self.class_weights)
-        return torch.nn.CrossEntropyLoss(weight_tensor)
+        return torch.nn.CrossEntropyLoss(weight=weight_tensor, reduction='none')
 
     def share(self):
         """
@@ -187,7 +193,8 @@ class TorchClassifierAgent(TorchAgent):
         shared['class_list'] = self.class_list
         shared['class_weights'] = self.class_weights
         shared['model'] = self.model
-        shared['optimizer'] = self.optimizer
+        if hasattr(self, 'optimizer'):
+            shared['optimizer'] = self.optimizer
         return shared
 
     def _get_labels(self, batch):
@@ -199,8 +206,9 @@ class TorchClassifierAgent(TorchAgent):
         try:
             labels_indices_list = [self.class_dict[label] for label in batch.labels]
         except KeyError as e:
-            print('One of your labels is not in the class list.')
+            warn_once('One of your labels is not in the class list.')
             raise e
+
         labels_tensor = torch.LongTensor(labels_indices_list)
         if self.use_cuda:
             labels_tensor = labels_tensor.cuda()
@@ -247,12 +255,10 @@ class TorchClassifierAgent(TorchAgent):
         labels = self._get_labels(batch)
         scores = self.score(batch)
         loss = self.criterion(scores, labels)
+        self.record_local_metric('loss', AverageMetric.many(loss))
+        loss = loss.mean()
         loss.backward()
         self.update_params()
-
-        # update metrics
-        self.metrics['loss'] += loss.item()
-        self.metrics['examples'] += len(batch.text_vec)
 
         # get predictions
         _, prediction_id = torch.max(scores.cpu(), 1)
@@ -276,21 +282,24 @@ class TorchClassifierAgent(TorchAgent):
         else:
             ref_prob = probs.cpu()[:, 0]
             # choose ref class if Prob(ref class) > threshold
-            prediction_id = ref_prob <= self.threshold
+            prediction_id = (ref_prob <= self.threshold).to(torch.int64)
         preds = [self.class_list[idx] for idx in prediction_id]
 
-        if batch.labels is None:
+        if batch.labels is None or self.opt['ignore_labels']:
             # interactive mode
             if self.opt.get('print_scores', False):
                 preds = self._format_interactive_output(probs, prediction_id)
         else:
             labels = self._get_labels(batch)
             loss = self.criterion(scores, labels)
-            self.metrics['loss'] += loss.item()
-            self.metrics['examples'] += len(batch.text_vec)
+            self.record_local_metric('loss', AverageMetric.many(loss))
+            loss = loss.mean()
             self._update_confusion_matrix(batch, preds)
 
-        return Output(preds)
+        if self.opt.get('print_scores', False):
+            return Output(preds, probs=probs.cpu())
+        else:
+            return Output(preds)
 
     def reset_metrics(self):
         """
@@ -298,8 +307,6 @@ class TorchClassifierAgent(TorchAgent):
         """
         super().reset_metrics()
         self.metrics['confusion_matrix'] = defaultdict(int)
-        self.metrics['examples'] = 0
-        self.metrics['loss'] = 0.0
 
     def _report_prec_recall_metrics(self, confmat, class_name, metrics):
         """
@@ -343,36 +350,37 @@ class TorchClassifierAgent(TorchAgent):
         Report loss as well as precision, recall, and F1 metrics.
         """
         m = super().report()
-        examples = self.metrics['examples']
-        if examples > 0:
-            m['examples'] = examples
-            m['mean_loss'] = self.metrics['loss'] / examples
+        # TODO: upgrade the confusion matrix to newer metrics
+        # get prec/recall metrics
+        confmat = self.metrics['confusion_matrix']
+        if self.opt.get('get_all_metrics'):
+            metrics_list = self.class_list
+        else:
+            # only give prec/recall metrics for ref class
+            metrics_list = [self.ref_class]
 
-            # get prec/recall metrics
-            confmat = self.metrics['confusion_matrix']
-            if self.opt.get('get_all_metrics'):
-                metrics_list = self.class_list
-            else:
-                # only give prec/recall metrics for ref class
-                metrics_list = [self.ref_class]
+        examples_per_class = []
+        for class_i in metrics_list:
+            class_total = self._report_prec_recall_metrics(confmat, class_i, m)
+            examples_per_class.append(class_total)
 
-            examples_per_class = []
-            for class_i in metrics_list:
-                class_total = self._report_prec_recall_metrics(confmat, class_i, m)
-                examples_per_class.append(class_total)
+        if len(examples_per_class) > 1:
+            # get weighted f1
+            f1 = 0
+            total_exs = sum(examples_per_class)
+            for i in range(len(self.class_list)):
+                f1 += (examples_per_class[i] / total_exs) * m[
+                    'class_{}_f1'.format(self.class_list[i])
+                ]
+            m['weighted_f1'] = f1
 
-            if len(examples_per_class) > 1:
-                # get weighted f1
-                f1 = 0
-                total_exs = sum(examples_per_class)
-                for i in range(len(self.class_list)):
-                    f1 += (examples_per_class[i] / total_exs) * m[
-                        'class_{}_f1'.format(self.class_list[i])
-                    ]
-                m['weighted_f1'] = f1
-
-        for k, v in m.items():
-            m[k] = round_sigfigs(v, 4)
+            # get weighted accuracy
+            wacc = 0
+            for i in range(len(self.class_list)):
+                wacc += (1.0 / len(self.class_list)) * m[
+                    'class_{}_recall'.format(self.class_list[i])
+                ]
+            m['weighted_acc'] = wacc
 
         return m
 

@@ -16,7 +16,7 @@ from parlai.core.message import Message
 from parlai.core.worlds import DialogPartnerWorld, validate, World
 from parlai.chat_service.services.messenger.worlds import OnboardWorld
 from parlai.tasks.wizard_of_wikipedia.agents import TOKEN_KNOWLEDGE, TOKEN_END_KNOWLEDGE
-from parlai.tasks.self_chat.worlds import InteractiveWorld as SelfChatBaseWorld
+from parlai.tasks.self_chat.worlds import SelfChatWorld as SelfChatBaseWorld
 from parlai.utils.misc import warn_once
 from parlai.agents.repeat_label.repeat_label import RepeatLabelAgent
 from parlai.core.worlds import create_task
@@ -341,7 +341,9 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
         #self._set_up_knowledge_agent(opt.get('add_token_knowledge', False))
         super(InteractiveSelfchatWorld, self).__init__(opt, agents, shared)
 
-    def init_contexts(self):
+
+class SelfChatWorld(SelfChatBaseWorld):
+    def init_contexts(self, shared=None):
         print('[ loading topics.. ]')
         # Load possible chosen topics
         topics_path = os.path.join(

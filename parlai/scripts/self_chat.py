@@ -15,6 +15,7 @@ from parlai.core.message import Message
 
 from pymongo import MongoClient
 
+import math
 import random
 DATABASE_NAME = 'auto_judge'
 COLLECTION_NAME = 'sampled-dialogues-amt-test3'
@@ -39,26 +40,35 @@ def setup_args(parser=None):
         help='Do not display these fields',
     )
     parser.add_argument(
-        '-it',
-        '--interactive-task',
+        '-st',
+        '--selfchat-task',
         type='bool',
         default=True,
-        help='Create interactive version of task',
+        help='Create a self chat version of the task',
+    )
+    parser.add_argument(
+        '--num-self-chats', type=int, default=1, help='Number of self chats to run'
     )
     parser.add_argument(
         '--selfchat-max-turns',
         type=int,
-        default=10,
-        help="The number of dialogue turns before self chat ends.",
+        default=6,
+        help='The number of dialogue turns before self chat ends',
     )
     parser.add_argument(
         '--seed-messages-from-task',
         action='store_true',
-        help="Automatically seed conversation with messages from task dataset.",
+        help='Automatically seed conversation with messages from task dataset.',
     )
-    parser.add_argument('--outfile', type=str, default='/tmp/selfchat.json')
     parser.add_argument(
-        '--format', type=str, default='json', choices={'parlai', 'json'}
+        '--outfile', type=str, default=None, help='File to save self chat logs'
+    )
+    parser.add_argument(
+        '--save-format',
+        type=str,
+        default='conversations',
+        choices=['conversations', 'parlai'],
+        help='Format to save logs in. conversations is a jsonl format, parlai is a text format.',
     )
     parser.set_defaults(interactive_mode=True, task='self_chat')
     WorldLogger.add_cmdline_args(parser)
@@ -98,26 +108,20 @@ def self_chat(opt, print_parser=None):
         print('[ Deprecated Warning: self_chat should be passed opt not Parser ]')
         opt = opt.parse_args()
 
-    random.seed(opt['seed'])
-    # Create models
+    # Create agents
     agent1 = create_agent(opt, requireModelExists=True)
     agent2 = agent1.clone()
-    if hasattr(agent2, 'id'):
-        agent2.id = agent2.id + "2"
 
-    world = create_task(opt, [agent1, agent2])
+    # Set IDs
+    model_id = agent1.id
+    agent1.id = model_id + "_1"
+    agent2.id = model_id + "_2"
 
-    if print_parser:
-        # Show arguments after loading model
-        print_parser.opt = agent1.opt
-        print_parser.print_args()
+    world = create_task(opt, user_agents=[agent1, agent2])
 
-    # set up logging
-    log_every_n_secs = opt.get('log_every_n_secs', -1)
-    if log_every_n_secs <= 0:
-        log_every_n_secs = float('inf')
-    log_time = TimeLogger()
+    # Set up world logging
     logger = WorldLogger(opt)
+    log_time = TimeLogger()
 
     # Run some self chats.
     max_dial_cnt = opt['num_dialogues']
@@ -177,6 +181,7 @@ def self_chat(opt, print_parser=None):
         collection.insert_one(convo_data)
         print(len(convo_data['convo']))
 
+
 if __name__ == '__main__':
     parser = setup_args()
-    self_chat(parser.parse_args(print_args=False), print_parser=parser)
+    self_chat(parser.parse_args(print_args=False))

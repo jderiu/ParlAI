@@ -19,7 +19,7 @@ Contains the following main utilities:
 See below for documentation on each specific tool.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Union, List, Tuple, Optional
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from collections import deque
@@ -35,13 +35,24 @@ from parlai.utils.thread import SharedTable
 from parlai.core.dict import DictionaryAgent
 from parlai.nn.lr_scheduler import ParlAILRScheduler
 from parlai.core.message import Message
-from parlai.utils.misc import AttrDict, warn_once, round_sigfigs
-from parlai.utils.torch import (
-    argsort,
+from parlai.utils.distributed import is_distributed
+from parlai.utils.misc import AttrDict, warn_once
+from parlai.utils.fp16 import (
+    fp16_apex_available,
     fp16_optimizer_wrapper,
-    padded_tensor,
-    fp16_available,
+    MemoryEfficientFP16Optimizer,
+    MemoryEfficientFP16Adam,
+    Adafactor,
 )
+from parlai.core.metrics import (
+    Metrics,
+    Metric,
+    GlobalAverageMetric,
+    GlobalSumMetric,
+    GlobalFixedMetric,
+)
+from parlai.utils.distributed import is_primary_worker
+from parlai.utils.torch import argsort, compute_grad_norm, padded_tensor
 
 
 class Batch(AttrDict):
@@ -184,6 +195,9 @@ class History(object):
         self.delimiter_tok = self.parse(self.delimiter)
         self.size = size
         self.split_on_newln = opt.get('split_lines', False)
+        self._global_end_token = opt.get('history_add_global_end_token', None)
+        if self._global_end_token is not None:
+            self._global_end_token = self.dict[self.dict.end_token]
 
         # set up history objects
         if vec_type != 'deque' and vec_type != 'list':
@@ -194,6 +208,7 @@ class History(object):
         self.history_strings = []
         self.history_raw_strings = []
         self.history_vecs = []
+        self.temp_history = None
 
         # person token args
         self.add_person_tokens = opt.get('person_tokens', False)
@@ -245,9 +260,14 @@ class History(object):
         # update history vecs
         self._update_vecs(text)
 
-    def update_history(self, obs):
+    def update_history(self, obs, temp_history=None):
         """
         Update the history with the given observation.
+
+        param obs:     Observation used to update the history. param temp_history:
+        Optional temporary string. If it is not None,     this string will be appended
+        to the end of the     history. It will not be in the history on the     next
+        dialogue turn. Set to None to stop adding     to the history.
         """
         if self.field in obs and obs[self.field] is not None:
             if self.split_on_newln:
@@ -265,12 +285,18 @@ class History(object):
                 # update history vecs
                 self._update_vecs(text)
 
+        self.temp_history = temp_history
+
     def get_history_str(self):
         """
         Return the string version of the history.
         """
         if len(self.history_strings) > 0:
-            return self.delimiter.join(self.history_strings)
+            history = self.delimiter.join(self.history_strings)
+            if self.temp_history is not None:
+                history += self.temp_history
+            return history
+
         return None
 
     def get_history_vec(self):
@@ -286,6 +312,10 @@ class History(object):
                 history.extend(vec)
                 history.extend(self.delimiter_tok)
             history.extend(self.history_vecs[-1])
+            if self.temp_history is not None:
+                history.extend(self.parse(self.temp_history))
+            if self._global_end_token is not None:
+                history.extend([self._global_end_token])
         else:
             # vec type is a list
             history = []
@@ -293,6 +323,10 @@ class History(object):
                 history += vec
                 history += self.delimiter_tok
             history += self.history_vecs[-1]
+            if self.temp_history is not None:
+                history.extend(self.parse(self.temp_history))
+            if self._global_end_token is not None:
+                history += [self._global_end_token]
 
         return history
 
@@ -348,8 +382,10 @@ class TorchAgent(ABC, Agent):
         }
         try:
             import apex.optimizers.fused_adam as fused_adam
+            import apex.optimizers.fused_lamb as fused_lamb
 
             optims['fused_adam'] = fused_adam.FusedAdam
+            optims['fused_lamb'] = fused_lamb.FusedLAMB
         except ImportError:
             pass
 
@@ -362,6 +398,10 @@ class TorchAgent(ABC, Agent):
         except ImportError:
             # no QHM installed
             pass
+
+        # now pull in memory efficient implementations
+        optims['mem_eff_adam'] = MemoryEfficientFP16Adam
+        optims['adafactor'] = Adafactor
 
         return optims
 
@@ -434,6 +474,13 @@ class TorchAgent(ABC, Agent):
             '--fp16', type='bool', default=False, help='Use fp16 computations.'
         )
         agent.add_argument(
+            '--fp16-impl',
+            type=str,
+            default='apex',
+            choices=['apex', 'mem_efficient'],
+            help='Implementation of FP16 to use',
+        )
+        agent.add_argument(
             '--force-fp16-tokens',
             type='bool',
             default=False,
@@ -467,6 +514,14 @@ class TorchAgent(ABC, Agent):
             hidden=True,
             help='Epsilon value for Adam optimizers. Set to 1e-6 if your '
             'large model has stability issues, but prefer the default.',
+        )
+        optim_group.add_argument(
+            '--adafactor-eps',
+            default='1e-30,1e-3',
+            type='floats',
+            help='Epsilon values for adafactor optimizer: regularization '
+            'constants for square gradient and parameter scale respectively',
+            recommended='1e-30,1e-3',
         )
         optim_group.add_argument(
             '-mom',
@@ -580,6 +635,14 @@ class TorchAgent(ABC, Agent):
             default='\n',
             help='Join history lines with this token, defaults to newline',
         )
+        agent.add_argument(
+            '--history-add-global-end-token',
+            type='nonestr',
+            default=None,
+            hidden=True,
+            choices=[None, 'end'],
+            help='Add special token to the end of history encoding.',
+        )
         # GPU arguments
         # these gpu options are all mutually exclusive, and should error if the
         # user tries to present multiple of them
@@ -610,6 +673,13 @@ class TorchAgent(ABC, Agent):
         self.__expecting_clear_history = False
         self.__expecting_to_reply = False
 
+        # used for sharing metrics back to the teacher
+        self._local_metrics: Dict[str, List[Metric]] = {}
+        # we may want to temporarily disable local metrics, roughly similar to
+        # `with torch.no_grad`. See TorchGeneratorAgent._init_cuda_buffer for
+        # example
+        self.__local_metrics_enabled = True
+
         # check for cuda
         self.use_cuda = not opt['no_cuda'] and torch.cuda.is_available()
         if self.use_cuda:
@@ -617,8 +687,23 @@ class TorchAgent(ABC, Agent):
                 print('[ Using CUDA ]')
             if not shared and opt['gpu'] != -1:
                 torch.cuda.set_device(opt['gpu'])
+
+        # whether we're using multi-gpu, a few different ways. these are not
+        # supported by all models, but we can still keep track of the options
+        self.model_parallel = opt.get('model_parallel', False) and self.use_cuda
+        self.data_parallel = opt.get('data_parallel', False) and self.use_cuda
+        if self.data_parallel and is_distributed():
+            raise RuntimeError('Cannot combine --data-parallel and distributed mode.')
+        if self.model_parallel and self.data_parallel:
+            raise RuntimeError('Cannot combine --data-parallel and --model-parallel.')
+
         # indicate whether using fp16
-        self.fp16 = self.use_cuda and self.opt.get('fp16', False) and fp16_available()
+        self.fp16 = self.use_cuda and self.opt.get('fp16', False)
+        if self.fp16:
+            # check that the implementation requested is available
+            self.fp16_impl = self.opt.get('fp16_impl', 'apex')
+            if self.fp16_impl == 'apex' and not fp16_apex_available():
+                self.fp16 = False
 
         if shared is None:
             # intitialize any important structures from scratch
@@ -629,17 +714,16 @@ class TorchAgent(ABC, Agent):
                 # of 8 in all dimensions. This INCLUDES the embeddings layer! As
                 # such, we need some extra magic to ensure the dictionary is padded
                 # with extra tokens to make it a multiple of 8.
-                if len(self.dict) % 8 != 0:
-                    for i in range(8 - len(self.dict) % 8):
+                from parlai.utils.torch import FP16_PAD_SIZE
+
+                if len(self.dict) % FP16_PAD_SIZE != 0:
+                    for i in range(FP16_PAD_SIZE - len(self.dict) % FP16_PAD_SIZE):
                         self.dict['__FP16_PAD_{}__'.format(i)] = 1
 
+            # global_metrics keeps track of batch-level or global-level metrics
+            self.global_metrics = Metrics(opt.get('numthreads', 1) > 1, shared=None)
+            # self.metrics is there for legacy reasons
             self.metrics: Dict[str, Any] = {}
-            # gradient norms
-            self.metrics['gnorm'] = 0.0
-            # gradient clipping rate
-            self.metrics['clip'] = 0.0
-            # number of calls to optimizer.step()
-            self.metrics['updates'] = 0
         else:
             # copy initialized data from shared table
             self.opt = shared['opt']
@@ -647,6 +731,9 @@ class TorchAgent(ABC, Agent):
             self.model = shared['model']
             self.criterion = shared['criterion']
             self.metrics = shared['metrics']
+            self.global_metrics = Metrics(
+                opt.get('numthreads', 1) > 1, shared=shared['global_metrics']
+            )
 
         if opt.get('numthreads', 1) > 1:
             torch.set_num_threads(1)
@@ -681,7 +768,7 @@ class TorchAgent(ABC, Agent):
         self.rank_candidates = opt['rank_candidates']
         self.add_person_tokens = opt.get('person_tokens', False)
         # set interactive mode or not according to options.
-        self.set_interactive_mode(opt['interactive_mode'], shared)
+        self.set_interactive_mode(opt.get('interactive_mode', False), shared)
 
     def build_history(self):
         """
@@ -755,6 +842,18 @@ class TorchAgent(ABC, Agent):
         """
         raise NotImplementedError('not implemented for this class')
 
+    def _should_initialize_optimizer(self) -> bool:
+        """
+        Used to indicate whether we should initialize an optimizer.
+
+        When this is off, we can save memory and use larger batches.
+        """
+        if self.opt.get('interactive_mode'):
+            return False
+        datatype = self.opt.get('datatype', '')
+        is_train = 'train' in datatype and 'evalmode' not in datatype
+        return is_train or self.opt.get('numthreads', 1) > 1
+
     def init_optim(self, params, optim_states=None, saved_optim_type=None):
         """
         Initialize optimizer with model parameters.
@@ -789,10 +888,26 @@ class TorchAgent(ABC, Agent):
             # turn on amsgrad for adam
             # amsgrad paper: https://openreview.net/forum?id=ryQu7f-RZ
             kwargs['amsgrad'] = True
+            if self.fp16 and self.fp16_impl == 'mem_efficient':
+                # grab this implementation instead
+                opt['optimizer'] = 'mem_eff_adam'
         elif opt['optimizer'] == 'qhadam':
             # set nus for qhadam
             kwargs['nus'] = opt.get('nus', (0.7, 1.0))
-        if opt['optimizer'] in ['adam', 'sparseadam', 'fused_adam', 'adamax', 'qhadam']:
+        elif opt['optimizer'] == 'adafactor':
+            # adafactor params
+            kwargs['beta1'] = opt.get('betas', (0.9, 0.999))[0]
+            kwargs['eps'] = opt['adafactor_eps']
+            kwargs['warmup_init'] = opt.get('warmup_updates', -1) > 0
+
+        if opt['optimizer'] in [
+            'adam',
+            'sparseadam',
+            'fused_adam',
+            'adamax',
+            'qhadam',
+            'fused_lamb',
+        ]:
             # set betas for optims that use it
             kwargs['betas'] = opt.get('betas', (0.9, 0.999))
             # set adam optimizer, but only if user specified it
@@ -817,8 +932,20 @@ class TorchAgent(ABC, Agent):
         optim_class = self.optim_opts()[opt['optimizer']]
         self.optimizer = optim_class(params, **kwargs)
         if self.fp16:
-            self.optimizer = fp16_optimizer_wrapper(self.optimizer)
-
+            if self.fp16_impl == 'apex':
+                self.optimizer = fp16_optimizer_wrapper(self.optimizer)
+            else:
+                # Using memory efficient optimizer
+                opt_name = opt['optimizer']
+                compatible_list = MemoryEfficientFP16Optimizer.compatible_optimizers()
+                is_compat = opt_name in compatible_list
+                if not is_compat:
+                    raise RuntimeError(
+                        f'The optimizer you selected {opt_name} is not compatible '
+                        'with Memory Efficient FP16. Please select from among this '
+                        f'list:\n{compatible_list}'
+                    )
+                self.optimizer = MemoryEfficientFP16Optimizer(self.optimizer)
         # TODO: we might want to hard reset optimizers here in the
         # case of fine tuning. Some rudimentary experiments seemed to
         # indicate that keeping adam weights around was desirable, so this
@@ -836,13 +963,20 @@ class TorchAgent(ABC, Agent):
                 optim_states['loss_scaler'] = self.optimizer.state_dict()['loss_scaler']
             elif optimstate_fp16 and not self.fp16:
                 # old optimizer was fp16 but now we're doing fp32,
-                # drop the fp16 wrapper from the state_dict and just load
+                # if apex, drop the fp16 wrapper from the state_dict and just load
                 # the fp16 weights into the fp32 tensors
-                optim_states = optim_states['optimizer_state_dict']
+                if 'optimizer_state_dict' in optim_states:
+                    # trained with apex
+                    optim_states = optim_states['optimizer_state_dict']
             elif not optimstate_fp16 and self.fp16:
                 # old optimizer was fp32, but now we're doing fp16.
                 # this is a bit clunky, but alternatives are worse
-                self.optimizer.optimizer.load_state_dict(optim_states)
+                try:
+                    self.optimizer.optimizer.load_state_dict(optim_states)
+                except ValueError:
+                    warn_once(
+                        'WARNING: not loading optim state since model params changed.'
+                    )
                 return
             else:
                 # previously trained in fp32, loading in fp32.
@@ -852,8 +986,10 @@ class TorchAgent(ABC, Agent):
             # finally, try to actually load the optimizer state
             try:
                 self.optimizer.load_state_dict(optim_states)
-            except ValueError:
-                print('WARNING: not loading optim state since model params changed.')
+            except (ValueError, KeyError):
+                warn_once(
+                    'WARNING: not loading optim state since model params changed.'
+                )
 
     def build_lr_scheduler(self, states=None, hard_reset=False):
         """
@@ -880,28 +1016,66 @@ class TorchAgent(ABC, Agent):
                 self.scheduler.get_initial_number_training_updates()
             )
 
+    def _control_local_metrics(self, enabled: bool = False, disabled: bool = False):
+        """
+        Used to temporarily disable local metrics.
+
+        This is useful for things like when you need to call super(), but
+        prevent the parent from recording some metric. For example, if you're
+        forwarding a dummy batch or calling super() but still want to modify
+        the output.
+
+        You can compare this to torch.no_grad in its goal.
+        """
+        if not (enabled ^ disabled):
+            raise ValueError(
+                'You must provide exactly one of enabled or disabled to '
+                '_control_local_metrics.'
+            )
+        self.__local_metrics_enabled = enabled
+
+    def record_local_metric(self, keyname: str, values: List[Metric]):
+        """
+        Record an example-level metric for all items in the batch.
+
+        Local metrics are maybe recorded anywhere within batch act. They will
+        automatically be collated and returned at the end of batch_act. The
+        beginning of batch_act resets these, so you may not use them during
+        observe.
+
+        Example local metrics include ppl, token_acc, any other agent-specific
+        metrics.
+        """
+        if not self.__local_metrics_enabled:
+            return
+        if keyname in self._local_metrics:
+            # we could relax this already
+            raise KeyError(f"Already recorded metrics for {keyname}")
+        self._local_metrics[keyname] = values
+
     def report(self):
         """
         Report metrics.
 
         Report includes learning rate and number of training updates.
         """
-        metrics = {}
+        report = self.global_metrics.report()
+
         # only report LR if we have a scheduler
         if hasattr(self, 'scheduler') and self.scheduler is not None:
-            current_lr = round_sigfigs(self.optimizer.param_groups[0]['lr'], 4)
-            metrics['lr'] = round_sigfigs(current_lr, 4)
-        metrics['total_train_updates'] = self._number_training_updates
-
-        steps = self.metrics['updates']
-        if steps > 0 and self.opt.get('gradient_clip', -1) > 0:
-            metrics['gnorm'] = round_sigfigs(self.metrics['gnorm'] / steps, 4)
-            metrics['clip'] = round_sigfigs(self.metrics['clip'] / steps, 2)
+            report['lr'] = GlobalAverageMetric(self.optimizer.param_groups[0]['lr'])
 
         if self.use_cuda:
-            metrics['gpu_mem_percent'] = round_sigfigs(self._gpu_usage(), sigfigs=3)
+            report['gpu_mem'] = GlobalAverageMetric(self._gpu_usage())
 
-        return metrics
+        if is_primary_worker() and self._number_training_updates:
+            # number train updates doesn't work in hogwild sadly, and should only
+            # be done on the primary worker
+            report['total_train_updates'] = GlobalFixedMetric(
+                self._number_training_updates
+            )
+
+        return report
 
     def _gpu_usage(self):
         """
@@ -1040,6 +1214,7 @@ class TorchAgent(ABC, Agent):
             self.metrics = SharedTable(self.metrics)
             self.model.share_memory()
         shared['metrics'] = self.metrics
+        shared['global_metrics'] = self.global_metrics.share()
 
         shared['dict'] = self.dict
         shared['model'] = self.model
@@ -1255,6 +1430,30 @@ class TorchAgent(ABC, Agent):
         self._set_label_cands_vec(obs, add_start, add_end, label_truncate)
         return obs
 
+    def _pad_tensor(
+        self, items: List[Union[List[int], torch.LongTensor]]
+    ) -> Tuple[torch.LongTensor, List[int]]:
+        """
+        Create a right padded matrix from an uneven list of lists.
+
+        Returns (padded, lengths), where padded is the padded matrix, and lengths
+        is a list containing the lengths of each row.
+
+        :param list[iter[int]] items: List of items
+        :returns: (padded, lengths) tuple
+        :rtype: (Tensor[int64], list[int])
+
+        This is intentionally overridable so that models can control how
+        to pad their input.
+        """
+        return padded_tensor(
+            items,
+            pad_idx=self.NULL_IDX,
+            use_cuda=self.use_cuda,
+            fp16friendly=self.fp16,
+            device=self.opt['gpu'],
+        )
+
     def is_valid(self, obs):
         """
         Determine if an observation is valid or not.
@@ -1302,9 +1501,7 @@ class TorchAgent(ABC, Agent):
         xs, x_lens = None, None
         if any(ex.get('text_vec') is not None for ex in exs):
             _xs = [ex.get('text_vec', self.EMPTY) for ex in exs]
-            xs, x_lens = padded_tensor(
-                _xs, self.NULL_IDX, self.use_cuda, fp16friendly=self.opt.get('fp16')
-            )
+            xs, x_lens = self._pad_tensor(_xs)
             if sort:
                 sort = False  # now we won't sort on labels
                 xs, x_lens, valid_inds, exs = argsort(
@@ -1323,12 +1520,8 @@ class TorchAgent(ABC, Agent):
             labels = [ex.get(field + '_choice') for ex in exs]
             y_lens = [y.shape[0] for y in label_vecs]
 
-            ys, y_lens = padded_tensor(
-                label_vecs,
-                self.NULL_IDX,
-                self.use_cuda,
-                fp16friendly=self.opt.get('fp16'),
-            )
+            ys, y_lens = self._pad_tensor(label_vecs)
+
             if sort and xs is None:
                 ys, valid_inds, label_vecs, labels, y_lens = argsort(
                     y_lens, ys, valid_inds, label_vecs, labels, y_lens, descending=True
@@ -1396,7 +1589,17 @@ class TorchAgent(ABC, Agent):
                 continue
             for i, sub_val in zip(valid_inds, v):
                 batch_reply[i][k] = sub_val
+
         return batch_reply
+
+    def get_temp_history(self, observation) -> Optional[str]:
+        """
+        Return a string to temporarily insert into history.
+
+        Intentionally overrideable so more complex models can insert temporary history
+        strings, i.e. strings that are removed from the history after a single turn.
+        """
+        return None
 
     def observe(self, observation):
         """
@@ -1419,8 +1622,13 @@ class TorchAgent(ABC, Agent):
             self.__expecting_to_reply = True
 
         self.observation = observation
-        # update the history using the observation
-        self.history.update_history(observation)
+        # Update the history using the observation.
+        # We may also consider adding a temporary string to the history
+        # using the `get_temp_history()` function: this string will
+        # persist until it is updated.
+        self.history.update_history(
+            observation, temp_history=self.get_temp_history(observation)
+        )
         return self.vectorize(
             observation,
             self.history,
@@ -1664,9 +1872,7 @@ class TorchAgent(ABC, Agent):
         Reset all TorchAgentMetrics.
         """
         super().reset_metrics()
-        self.metrics['gnorm'] = 0.0
-        self.metrics['clip'] = 0.0
-        self.metrics['updates'] = 0
+        self.global_metrics.clear()
 
     def act(self):
         """
@@ -1689,11 +1895,12 @@ class TorchAgent(ABC, Agent):
         ``eval_step`` methods instead. The former is called when labels are
         present in the observations batch; otherwise, the latter is called.
         """
-        batch_size = len(observations)
+        # clear local metrics before anything else
+        self._local_metrics.clear()
+
         # initialize a list of replies with this agent's id
         batch_reply = [
-            Message({'id': self.getID(), 'episode_done': False})
-            for _ in range(batch_size)
+            Message({'id': self.getID(), 'episode_done': False}) for _ in observations
         ]
 
         # check if there are any labels available, if so we will train on them
@@ -1702,18 +1909,48 @@ class TorchAgent(ABC, Agent):
         # create a batch from the vectors
         batch = self.batchify(observations)
 
+        if (
+            'label_vec' in batch
+            and 'text_vec' in batch
+            and batch.label_vec is not None
+            and batch.text_vec is not None
+        ):
+            # tokens per batch
+            # we divide by the binary is_primary_worker() so that the numerator is
+            # num_tokens in all workers, and the denominator is 1.
+            tpb = GlobalAverageMetric(
+                (batch.label_vec != self.NULL_IDX).sum().item(),
+                float(is_primary_worker()),
+            )
+            self.global_metrics.add('tpb', tpb)
+
         if self.is_training:
             output = self.train_step(batch)
         else:
             with torch.no_grad():
                 # save memory and compute by disabling autograd.
-                # use `with torch.enable_grad()` to gain back graidients.
+                # use `with torch.enable_grad()` to gain back gradients.
                 output = self.eval_step(batch)
 
-        if output is None:
-            return batch_reply
+        if output is not None:
+            # local metrics are automatically matched up
+            self.match_batch(batch_reply, batch.valid_indices, output)
 
-        self.match_batch(batch_reply, batch.valid_indices, output)
+        # broadcast the metrics back
+        for k, values in self._local_metrics.items():
+            if len(values) != len(batch.valid_indices):
+                raise IndexError(
+                    f"Batchsize mismatch on metric {k} (got {len(values)}, "
+                    f"expected {len(batch.valid_indices)}"
+                )
+            for i, value in zip(batch.valid_indices, values):
+                if 'metrics' not in batch_reply[i]:
+                    batch_reply[i]['metrics'] = {}
+                batch_reply[i]['metrics'][k] = value
+
+        # Make sure we push all the metrics to main thread in hogwild/workers
+        self.global_metrics.flush()
+
         return batch_reply
 
     @abstractmethod
@@ -1745,9 +1982,23 @@ class TorchAgent(ABC, Agent):
         It is recommended you use this instead of loss.backward(), for integration with
         distributed training and FP16 training.
         """
-        if self.opt.get('update_freq', 1) > 1:
+        update_freq = self.opt.get('update_freq', 1)
+
+        if update_freq > 1:
             # gradient accumulation, but still need to average across the minibatches
-            loss = loss / self.opt['update_freq']
+            loss = loss / update_freq
+            self._number_grad_accum = (self._number_grad_accum + 1) % update_freq
+
+            # we're doing gradient accumulation, so we don't need to sync gradients
+            # amoung GPUs
+            if self._number_grad_accum != 0 and is_distributed():
+                # accumulate without syncing
+                with self.model.no_sync():
+                    if self.fp16:
+                        self.optimizer.backward(loss, update_master_grads=False)
+                    else:
+                        loss.backward()
+                return
 
         if self.fp16:
             self.optimizer.backward(loss, update_master_grads=False)
@@ -1768,7 +2019,7 @@ class TorchAgent(ABC, Agent):
         if update_freq > 1:
             # we're doing gradient accumulation, so we don't only want to step
             # every N updates instead
-            self._number_grad_accum = (self._number_grad_accum + 1) % update_freq
+            # self._number_grad_accum is updated in backward function
             if self._number_grad_accum != 0:
                 return
 
@@ -1784,14 +2035,30 @@ class TorchAgent(ABC, Agent):
                 grad_norm = torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(), self.opt['gradient_clip']
                 )
-            self.metrics['gnorm'] += grad_norm
-            self.metrics['clip'] += float(grad_norm > self.opt['gradient_clip'])
+            self.global_metrics.add('gnorm', GlobalAverageMetric(grad_norm))
+            self.global_metrics.add(
+                'clip',
+                GlobalAverageMetric(float(grad_norm > self.opt['gradient_clip'])),
+            )
+        else:
+            parameters = self.model.parameters()
+            grad_norm = compute_grad_norm(parameters)
+            self.global_metrics.add('gnorm', GlobalAverageMetric(grad_norm))
 
-        self.metrics['updates'] += 1
+        if self.fp16:
+            self.global_metrics.add(
+                'fp16_loss_scalar', GlobalAverageMetric(self.optimizer.loss_scale)
+            )
+
         self.optimizer.step()
 
         # keep track up number of steps, compute warmup factor
         self._number_training_updates += 1
+
+        # in distributed mode, all workers step together, but we need to only
+        # count it once. Only the primary worker gets to make the count
+        if is_primary_worker():
+            self.global_metrics.add('updates', GlobalSumMetric(1))
 
         if getattr(self, 'scheduler', None):
             self.scheduler.step(self._number_training_updates)
@@ -1808,21 +2075,3 @@ class TorchAgent(ABC, Agent):
             return
 
         self.optimizer.zero_grad()
-
-    def _total_parameters(self):
-        """
-        Compute the total number of parameters in the model.
-
-        :return:
-            total number of parameters in the model.
-        """
-        return sum(p.numel() for p in self.model.parameters())
-
-    def _trainable_parameters(self):
-        """
-        Compute the total number of trainable parameters in the model.
-
-        :return:
-            total number of trainable parameters in the model.
-        """
-        return sum(p.numel() for p in self.model.parameters() if p.requires_grad)

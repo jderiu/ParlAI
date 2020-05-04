@@ -54,11 +54,16 @@ class CandidateBaseTeacher(Teacher, ABC):
         num_test: int = NUM_TEST,
     ):
         """
-        :param int vocab_size: size of the vocabulary
-        :param int example_size: length of each example
-        :param int num_candidates: number of label_candidates generated
-        :param int num_train: size of the training set
-        :param int num_test: size of the valid/test sets
+        :param int vocab_size:
+            size of the vocabulary
+        :param int example_size:
+            length of each example
+        :param int num_candidates:
+            number of label_candidates generated
+        :param int num_train:
+            size of the training set
+        :param int num_test:
+            size of the valid/test sets
         """
         self.opt = opt
         opt['datafile'] = opt['datatype'].split(':')[0]
@@ -182,6 +187,15 @@ class CandidateTeacher(CandidateBaseTeacher, DialogTeacher):
                 offset = (i + j) % len(self.corpus)
                 cands.append(self.corpus[offset])
             yield (text, [text], 0, cands), True
+
+
+class VariableLengthTeacher(CandidateTeacher):
+    def build_corpus(self):
+        corpus = super().build_corpus()
+        for i in range(len(corpus)):
+            length = len(corpus[i]) - i % 3
+            corpus[i] = corpus[i][:length]
+        return corpus
 
 
 class CandidateTeacherDataset(Dataset):
@@ -316,6 +330,14 @@ class MultiturnCandidateTeacher(CandidateTeacher):
         return self.example_size * self.num_episodes()
 
 
+class MultiturnTeacher(MultiturnCandidateTeacher):
+    """
+    Simple alias.
+    """
+
+    pass
+
+
 class NocandidateTeacher(CandidateTeacher):
     """
     Strips the candidates so the model can't see any options.
@@ -364,6 +386,24 @@ class MultiturnNocandidateTeacher(MultiturnCandidateTeacher):
         raw = super().setup_data(fold)
         for (t, a, _r, _c), e in raw:
             yield (t, a), e
+
+
+class ClassifierTeacher(CandidateTeacher):
+    """
+    Classifier Teacher.
+
+    Good for testing simple classifier models.
+    """
+
+    def setup_data(self, fold):
+        raw = super().setup_data(fold)
+        for (t, _a, _r, _c), e in raw:
+            letters = t.split(' ')
+            # everything starts with 0 or 1
+            letters[0] = str(int(int(t[0]) % 2))
+            label = 'one' if letters[0] == '1' else 'zero'
+            text = ' '.join(letters)
+            yield (text, [label], 0, ['one', 'zero']), e
 
 
 class BadExampleTeacher(CandidateTeacher):
@@ -490,7 +530,10 @@ class RepeatTeacher(DialogTeacher):
         opt = copy.deepcopy(opt)
         opt['datafile'] = 'unused_path'
         task = opt.get('task', 'integration_tests:RepeatTeacher:50')
-        self.data_length = int(task.split(':')[-1])
+        try:
+            self.data_length = int(task.split(':')[-1])
+        except ValueError:
+            self.data_length = 10
         super().__init__(opt, shared)
 
     def setup_data(self, unused_path):

@@ -19,7 +19,7 @@ potential unknown words. See the evaluation script for more information.
 
 from parlai.scripts.build_dict import setup_args, build_dict as main_build_dict
 
-DICT_FILE = 'models:convai2/dict_self'
+DICT_FILE = 'models:convai2/kvmemnn/model.dict'
 
 
 def build_dict():
