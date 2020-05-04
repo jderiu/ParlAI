@@ -11,12 +11,13 @@ from parlai.core.agents import create_agent
 from parlai.core.worlds import create_task
 from parlai.utils.world_logging import WorldLogger
 from parlai.utils.misc import TimeLogger
+from parlai.core.message import Message
 
 from pymongo import MongoClient
 
 import random
 DATABASE_NAME = 'auto_judge'
-COLLECTION_NAME = 'sampled-dialogues-amt-test2'
+COLLECTION_NAME = 'sampled-dialogues-amt-test3'
 
 
 def setup_args(parser=None):
@@ -160,8 +161,17 @@ def self_chat(opt, print_parser=None):
             turn1 = exchange[1]
             turn0['exchange_nr'] = eid
             turn1['exchange_nr'] = eid
+            if type(turn0) == Message:
+                turn0.force_set('episode_done', bool(turn0['episode_done']))
+            else:
+                turn0['episode_done'] = bool(turn0['episode_done'])
+            if type(turn0) == Message:
+                turn1.force_set('episode_done', bool(turn1['episode_done']))
+            else:
+                turn1['episode_done'] = bool(turn1['episode_done'])
             turn_list.append(turn0)
             turn_list.append(turn1)
+
 
         convo_data['convo'] = cap_context(turn_list, convo_data['domain_name'])
         collection.insert_one(convo_data)

@@ -13,11 +13,14 @@ from parlai.utils.world_logging import WorldLogger
 from parlai.utils.misc import TimeLogger
 from parlai.core.message import Message
 
+import warnings
+warnings.filterwarnings("ignore")
+
 from pymongo import MongoClient
 from tqdm import tqdm
 import random
 DATABASE_NAME = 'auto_judge'
-COLLECTION_NAME = 'sampled-dialogues-autojudge-tournament2-personachat'
+COLLECTION_NAME = 'sampled-dialogues-amt-tournament2-convai'
 
 
 def setup_args(parser=None):
@@ -101,27 +104,24 @@ def store_logger(opt, collection, logger: WorldLogger):
         convo_data['system_type1'] = opt['model_file2'].split('/')[2]
 
         for eid, exchange in enumerate(convo):
+            turn0_db, turn1_db = {}, {}
+
             turn0 = exchange[0]
             turn1 = exchange[1]
-            turn0['exchange_nr'] = eid
-            turn1['exchange_nr'] = eid
-            if type(turn0) == Message:
-                turn0.force_set('episode_done', bool(turn0['episode_done']))
-                turn0.force_set('id', convo_data['system_type0'])
-            else:
-                turn0['episode_done'] = bool(turn0['episode_done'])
-                turn0['id'] = convo_data['system_type0']
+            turn0_db['exchange_nr'] = eid
+            turn1_db['exchange_nr'] = eid
 
+            turn0_db['id'] = convo_data['system_type0']
+            turn1_db['id'] = convo_data['system_type1']
 
-            if type(turn1) == Message:
-                turn1.force_set('episode_done', bool(turn1['episode_done']))
-                turn1.force_set('id', convo_data['system_type1'])
-            else:
-                turn1['episode_done'] = bool(turn1['episode_done'])
-                turn1['id'] = convo_data['system_type1']
+            turn0_db['episode_done'] = bool(turn0['episode_done'])
+            turn1_db['episode_done'] = bool(turn1['episode_done'])
 
-            turn_list.append(turn0)
-            turn_list.append(turn1)
+            turn0_db['text'] = turn0['text']
+            turn1_db['text'] = turn1['text']
+
+            turn_list.append(turn0_db)
+            turn_list.append(turn1_db)
 
         model1_starts = random.choice([False, True])
 
@@ -168,9 +168,61 @@ def self_chat(opt, print_parser=None):
     random.seed(opt['seed'])
     # Create models
     opt['model_file'] = opt['model_file1']
-    agent1 = create_agent(opt, requireModelExists=True)
+    if opt['model_file'] == 'tmp/convai2/lost_in_conversation/last_checkpoint':
+        parser.set_defaults(model='projects.convai2.baselines.transformer_chatbot.agent:TransformerAgent',
+                            sample=False,
+                            wild_mode=False,
+                            replace_repeat=False,
+                            replace_ngram=False,
+                            detokenize=False,
+                            emoji_prob=0,
+                            add_questions=0,
+                            clean_emoji=False,
+                            check_grammar=False,
+                            correct_generative=False,
+                            split_into_sentences=False,
+                            max_seq_len=256,
+                            beam_size=3,
+                            annealing_topk=None,
+                            annealing=0.6,
+                            length_penalty=0.6)
+        opt = parser.parse_args()
+        agent1 = create_agent(opt, requireModelExists=True)
+    elif opt['model_file'] == 'tmp/convai2/huggingface/model':
+        parser.set_params(model='projects.convai2.baselines.huggingface.convai_evaluation:TransformerAgent')
+        opt = parser.parse_args()
+        agent1 = create_agent(opt, requireModelExists=True)
+    else:
+        agent1 = create_agent(opt, requireModelExists=True)
+
     opt['model_file'] = opt['model_file2']
-    agent2 = create_agent(opt, requireModelExists=True)
+    if opt['model_file'] == 'tmp/convai2/lost_in_conversation/last_checkpoint':
+        parser.set_defaults(model='projects.convai2.baselines.transformer_chatbot.agent:TransformerAgent',
+                            sample=False,
+                            wild_mode=False,
+                            replace_repeat=False,
+                            replace_ngram=False,
+                            detokenize=False,
+                            emoji_prob=0,
+                            add_questions=0,
+                            clean_emoji=False,
+                            check_grammar=False,
+                            correct_generative=False,
+                            split_into_sentences=False,
+                            max_seq_len=256,
+                            beam_size=3,
+                            annealing_topk=None,
+                            annealing=0.6,
+                            length_penalty=0.6)
+        opt = parser.parse_args()
+        agent2 = create_agent(opt, requireModelExists=True)
+    elif opt['model_file'] == 'tmp/convai2/huggingface/model':
+        parser.set_params( model='projects.convai2.baselines.huggingface.convai_evaluation:TransformerAgent')
+        opt = parser.parse_args()
+        agent2 = create_agent(opt, requireModelExists=True)
+    else:
+        agent2 = create_agent(opt, requireModelExists=True)
+
     if hasattr(agent2, 'id'):
         agent2.id = agent2.id + "2"
 

@@ -27,8 +27,10 @@ from pymongo import MongoClient
 from tqdm import tqdm
 import random
 
+
+
 DATABASE_NAME = 'auto_judge'
-COLLECTION_NAME = 'sampled-dialogues-amt-test2'
+COLLECTION_NAME = 'sampled-dialogues-amt-tournament2-convai'
 def setup_args(parser=None):
     if parser is None:
         parser = ParlaiParser(True, True, 'Display data from a task')
