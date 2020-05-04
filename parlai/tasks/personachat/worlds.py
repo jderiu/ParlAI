@@ -9,7 +9,7 @@ from copy import deepcopy
 from parlai.core.worlds import create_task
 from parlai.core.worlds import DialogPartnerWorld, validate
 from parlai.agents.repeat_label.repeat_label import RepeatLabelAgent
-from parlai.tasks.self_chat.worlds import SelfChatBaseWorld
+from parlai.tasks.self_chat.worlds import SelfChatWorld
 
 import random
 from typing import List
@@ -139,8 +139,8 @@ class InteractiveWorld(DialogPartnerWorld):
             self.cnt = 0
 
 
-class InteractiveSelfchatWorld(SelfChatBaseWorld):
-    def init_contexts(self):
+class InteractiveSelfchatWorld(SelfChatWorld):
+    def init_contexts(self, shared=None):
         self.personas_list, convos = load_personas(self.opt)
         lengths = [int(len(convo)/2) for convo in convos]
         bin_lengths = np.bincount(lengths)
@@ -152,7 +152,7 @@ class InteractiveSelfchatWorld(SelfChatBaseWorld):
         sampled_val = max([sampled_val, 4])
         return sampled_val
 
-    def get_contexts(self, episode_num: int) -> List[str]:
+    def get_contexts(self) -> List[str]:
         random.seed()
         personas_1 = random.choice(self.personas_list)
         personas_2 = random.choice(self.personas_list)

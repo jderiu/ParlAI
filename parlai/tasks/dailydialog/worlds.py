@@ -1,4 +1,4 @@
-from parlai.tasks.self_chat.worlds import SelfChatBaseWorld
+from parlai.tasks.self_chat.worlds import SelfChatWorld
 from parlai.agents.repeat_label.repeat_label import RepeatLabelAgent
 from parlai.core.worlds import create_task
 
@@ -38,7 +38,7 @@ def load_contexts(opt):
     return list(contexts)
 
 
-class InteractiveSelfchatWorld(SelfChatBaseWorld):
+class InteractiveSelfchatWorld(SelfChatWorld):
     def __init__(self, opt, agents, shared=None):
         opt['random_order'] = False
         super(InteractiveSelfchatWorld, self).__init__(opt, agents, shared)
