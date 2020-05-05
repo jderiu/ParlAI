@@ -11,7 +11,9 @@ from parlai.core.agents import create_agent
 from parlai.core.worlds import create_task
 from parlai.utils.world_logging import WorldLogger
 from parlai.utils.misc import TimeLogger
-from parlai.core.message import Message
+import spacy
+
+nlp = spacy.load("en_core_web_sm")
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -117,8 +119,8 @@ def store_logger(opt, collection, logger: WorldLogger):
             turn0_db['episode_done'] = bool(turn0['episode_done'])
             turn1_db['episode_done'] = bool(turn1['episode_done'])
 
-            turn0_db['text'] = turn0['text']
-            turn1_db['text'] = turn1['text']
+            turn0_db['text'] = ' '.join([tok.text for tok in nlp(turn0['text'].lower())])
+            turn1_db['text'] = ' '.join([tok.text for tok in nlp(turn1['text'].lower())])
 
             turn_list.append(turn0_db)
             turn_list.append(turn1_db)

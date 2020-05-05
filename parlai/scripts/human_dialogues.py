@@ -26,14 +26,16 @@ from parlai.core.worlds import create_task
 from pymongo import MongoClient
 from tqdm import tqdm
 import random
+import spacy
 
+nlp = spacy.load("en_core_web_sm")
 
 
 DATABASE_NAME = 'auto_judge'
 def setup_args(parser=None):
     if parser is None:
         parser = ParlaiParser(True, True, 'Display data from a task')
-    parser.add_pytorch_datateacher_args()
+    #parser.add_pytorch_datateacher_args()
     # Get command line arguments
     parser.add_argument('-n', '-ne', '--num-examples', type=int, default=10)
     parser.add_argument('-ns', '--num-stored', type=int, default=10)
@@ -103,11 +105,11 @@ def display_data(opt):
     elif domain == 'personachat':
         convo_list = [convo[1:] for convo in logger._logs]
     elif domain == 'empathetic_dialogues':
-        convo_list = [convo[1:] for convo in logger._logs if len(convo) > 3]
+        convo_list = [convo[1:] for convo in logger._logs if len(convo) > 2]
     else:
         convo_list = logger._logs
 
-    sampled_convos = random.sample(convo_list, k=opt['num_stored'])
+    sampled_convos = random.sample(convo_list, k=min(len(convo_list) , opt['num_stored']))
     for did, convo in enumerate(sampled_convos):
         convo_data = {}
         convo_data['domain_name'] = opt['task'].split(':')[0]
@@ -123,14 +125,22 @@ def display_data(opt):
         turn_list = []
 
         for eid, exchange in enumerate(convo):
+            turn0_db, turn1_db = {}, {}
+
             turn0 = exchange[0]
             turn1 = exchange[1]
-            turn0['exchange_nr'] = eid
-            turn1['exchange_nr'] = eid
-            turn0.force_set('id', 'human')
-            turn1.force_set('id', 'human')
-            turn_list.append(turn0)
-            turn_list.append(turn1)
+            turn0_db['exchange_nr'] = eid
+            turn1_db['exchange_nr'] = eid
+
+            turn0_db['id'] = 'human'
+            turn1_db['id'] = 'human'
+
+            turn0_db['text'] = ' '.join([tok.text for tok in nlp(turn0['text'].lower())])
+            turn1_db['text'] = ' '.join([tok.text for tok in nlp(turn1['text'].lower())])
+
+            turn_list.append(turn0_db)
+            turn_list.append(turn1_db)
+
 
         if domain == 'wizard_of_wikipedia':
             turn_list = turn_list[1:] #remove context word
