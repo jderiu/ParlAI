@@ -30,7 +30,6 @@ import random
 
 
 DATABASE_NAME = 'auto_judge'
-COLLECTION_NAME = 'sampled-dialogues-amt-tournament2-convai'
 def setup_args(parser=None):
     if parser is None:
         parser = ParlaiParser(True, True, 'Display data from a task')
@@ -45,6 +44,7 @@ def setup_args(parser=None):
     parser.add_argument('-port', '--mongo-port', type=int)
     parser.add_argument('-user', '--user-name', type=str)
     parser.add_argument('-pw', '--password', type=str)
+    parser.add_argument('-col', '--collection-name', type=str)
     WorldLogger.add_cmdline_args(parser)
     return parser
 
@@ -61,7 +61,7 @@ def display_data(opt):
 
     db = client[DATABASE_NAME]
 
-    collection = db[COLLECTION_NAME]
+    collection = db[opt['collection_name']]
 
     # create repeat label agent and assign it to the specified task
     agent = RepeatLabelAgent(opt)

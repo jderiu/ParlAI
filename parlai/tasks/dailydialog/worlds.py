@@ -43,7 +43,7 @@ class InteractiveSelfchatWorld(SelfChatWorld):
         opt['random_order'] = False
         super(InteractiveSelfchatWorld, self).__init__(opt, agents, shared)
 
-    def init_contexts(self):
+    def init_contexts(self, shared=None):
         self.context_list = load_contexts(self.opt)
         lengths = [int(len(convo)/2) for convo in self.context_list]
         bin_lengths = np.bincount(lengths)
@@ -52,12 +52,12 @@ class InteractiveSelfchatWorld(SelfChatWorld):
 
     def sample_episode_length(self):
         # if length is 1 then only the context is rendered
-        sampled_val = random.choices(self.lengths, weights=self.p_vals, k=1)[0] + 1
+        sampled_val = random.choices(self.lengths, weights=self.p_vals, k=1)[0] + 3
         #make sure there are at least 6 turns
-        sampled_val = max([sampled_val, 4])
+        sampled_val = max([sampled_val, 6])
         return sampled_val
 
-    def get_contexts(self, episode_num: int) -> List[str]:
+    def get_contexts(self) -> List[str]:
         random.seed()
         context = random.choice(self.context_list)
         return [context[1], context[0]]

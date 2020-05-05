@@ -20,7 +20,6 @@ from pymongo import MongoClient
 from tqdm import tqdm
 import random
 DATABASE_NAME = 'auto_judge'
-COLLECTION_NAME = 'sampled-dialogues-amt-tournament2-convai'
 
 
 def setup_args(parser=None):
@@ -35,6 +34,7 @@ def setup_args(parser=None):
     parser.add_argument('-port', '--mongo-port', type=int)
     parser.add_argument('-user', '--user-name', type=str)
     parser.add_argument('-pw', '--password', type=str)
+    parser.add_argument('-col', '--collection-name', type=str)
     parser.add_argument(
         '-mf1',
         '--model-file1',
@@ -154,7 +154,7 @@ def self_chat(opt, print_parser=None):
 
     db = client[DATABASE_NAME]
 
-    collection = db[COLLECTION_NAME]
+    collection = db[opt['collection_name']]
 
     if print_parser is not None:
         if print_parser is True and isinstance(opt, ParlaiParser):

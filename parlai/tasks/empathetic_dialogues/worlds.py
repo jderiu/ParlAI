@@ -42,7 +42,7 @@ class InteractiveSelfchatWorld(SelfChatWorld):
         opt['random_order'] = False
         super(InteractiveSelfchatWorld, self).__init__(opt, agents, shared)
 
-    def init_contexts(self):
+    def init_contexts(self, shared=None):
         self.context_list = load_contexts(self.opt)
         lengths = [int(len(convo) / 2) for convo in self.context_list]
         bin_lengths = np.bincount(lengths)
@@ -51,8 +51,8 @@ class InteractiveSelfchatWorld(SelfChatWorld):
 
     def sample_episode_length(self):
         # since empathetic dialogues are super small we make bot-bot dialogues at least 2 exchages long
-        sampled_val = random.choices(self.lengths, weights=self.p_vals, k=1)[0] + 2
-        sampled_val = max([sampled_val, 2])
+        sampled_val = random.choices(self.lengths, weights=self.p_vals, k=1)[0] + 3
+        sampled_val = max([sampled_val, 3])
         return sampled_val
 
     def get_contexts(self) -> List[str]:
