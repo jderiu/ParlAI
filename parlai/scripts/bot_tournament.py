@@ -21,7 +21,7 @@ warnings.filterwarnings("ignore")
 from pymongo import MongoClient
 from tqdm import tqdm
 import random
-DATABASE_NAME = 'auto_judge'
+DATABASE_NAME = 'auto_judge_final'
 
 
 def setup_args(parser=None):

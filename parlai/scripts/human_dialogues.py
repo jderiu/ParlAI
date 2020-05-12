@@ -31,7 +31,7 @@ import spacy
 nlp = spacy.load("en_core_web_sm")
 
 
-DATABASE_NAME = 'auto_judge'
+DATABASE_NAME = 'auto_judge_final'
 def setup_args(parser=None):
     if parser is None:
         parser = ParlaiParser(True, True, 'Display data from a task')
