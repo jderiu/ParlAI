@@ -37,6 +37,7 @@ def setup_args(parser=None):
         parser = ParlaiParser(True, True, 'Display data from a task')
     #parser.add_pytorch_datateacher_args()
     # Get command line arguments
+    parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('-n', '-ne', '--num-examples', type=int, default=10)
     parser.add_argument('-ns', '--num-stored', type=int, default=10)
     parser.add_argument('-mdl', '--max-display-len', type=int, default=1000)
@@ -108,7 +109,7 @@ def display_data(opt):
         convo_list = [convo[1:] for convo in logger._logs if len(convo) > 2]
     else:
         convo_list = logger._logs
-
+    random.seed(opt['seed'])
     sampled_convos = random.sample(convo_list, k=min(len(convo_list) , opt['num_stored']))
     for did, convo in enumerate(sampled_convos):
         convo_data = {}

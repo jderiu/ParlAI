@@ -88,7 +88,7 @@ def load_opt_file(optfile: str) -> Opt:
     """
     try:
         # try json first
-        with open(optfile, 'r') as t_handle:
+        with open(optfile, 'rt', encoding='utf-8') as t_handle:
             opt = json.load(t_handle)
     except UnicodeDecodeError:
         # oops it's pickled
