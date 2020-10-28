@@ -175,6 +175,8 @@ def eval_model(opt, print_parser=None):
             'with --report-filename'
         )
 
+
+
     # load model and possibly print opt
     agent = create_agent(opt, requireModelExists=True)
     if print_parser:
@@ -210,6 +212,35 @@ class EvalModel(ParlaiScript):
         return setup_args()
 
     def run(self):
+        parser = setup_args()
+        if self.opt['model_file'] == 'tmp/convai2/lost_in_conversation/last_checkpoint':
+            parser.set_defaults(model='projects.convai2.baselines.transformer_chatbot.agent:TransformerAgent',
+                                sample=False,
+                                wild_mode=False,
+                                replace_repeat=False,
+                                replace_ngram=False,
+                                detokenize=False,
+                                emoji_prob=0,
+                                add_questions=0,
+                                clean_emoji=False,
+                                check_grammar=False,
+                                correct_generative=False,
+                                split_into_sentences=False,
+                                max_seq_len=256,
+                                beam_size=3,
+                                annealing_topk=None,
+                                annealing=0.6,
+                                length_penalty=0.6)
+            self.opt = parser.parse_args()
+            self.opt['model_file'] = None
+        elif self.opt['model_file'] == 'tmp/convai2/huggingface/model':
+            parser.set_params(
+                model='projects.convai2.baselines.huggingface.convai_evaluation:TransformerAgent',
+                model_file=None
+            )
+            self.opt = parser.parse_args()
+            self.opt['model_file'] = None
+
         return eval_model(self.opt)
 
 

@@ -330,6 +330,8 @@ class Conversations:
                             convo['context'].append(turn)
                     if new_pair:
                         convo['dialog'].append(new_pair)
+                for turn in convo['dialog']:
+                    turn[0]['agent'] = None
                 json_convo = json.dumps(convo)
                 f.write(json_convo + '\n')
         print(f' [ Conversations saved to file: {to_save} ]')
